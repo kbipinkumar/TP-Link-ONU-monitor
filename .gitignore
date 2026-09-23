@@ -2,3 +2,5 @@
 __pycache__/
 *.log
 onu_config.ini
+packaging/
+*.deb

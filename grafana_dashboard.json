@@ -702,8 +702,8 @@
         "spec": {
           "allowCustomValue": true,
           "current": {
-            "text": "Vindhya-HL",
-            "value": "Vindhya-HL"
+            "text": "",
+            "value": ""
           },
           "definition": "buckets()",
           "hide": "dontHide",

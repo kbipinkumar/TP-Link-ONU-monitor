@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+systemctl stop onu_monitor.timer || true
+systemctl disable onu_monitor.timer || true
+systemctl stop onu_monitor_web.service || true
+systemctl disable onu_monitor_web.service || true
+
+exit 0

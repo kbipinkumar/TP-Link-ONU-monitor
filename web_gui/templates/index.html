@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ONU Monitor Configuration</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --danger-color: #ef4444;
+            --success-color: #10b981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background: var(--surface-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        input[type="number"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent-color);
+            cursor: pointer;
+        }
+        
+        .checkbox-group label {
+            margin-bottom: 0;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash-message {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .flash-success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success-color);
+            color: #34d399;
+        }
+
+        .flash-warning {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger-color);
+            color: #fca5a5;
+        }
+        
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 600px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ONU Monitor Portal</h1>
+            <p class="subtitle">Configure your GPON statistics scraper</p>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form action="/save" method="POST">
+            <!-- ONU Section -->
+            <div class="card">
+                <h2>🌐 Router Credentials</h2>
+                <div class="form-group">
+                    <label for="onu_ip">ONU IP Address</label>
+                    <input type="text" id="onu_ip" name="onu_ip" value="{{ config.get('ONU', 'IP', fallback='192.168.1.1') }}" required>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="onu_username">Web UI Username</label>
+                        <input type="text" id="onu_username" name="onu_username" value="{{ config.get('ONU', 'USERNAME', fallback='user') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="onu_password">Web UI Password</label>
+                        <input type="password" id="onu_password" name="onu_password" value="{{ config.get('ONU', 'PASSWORD', fallback='') }}" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MQTT Section -->
+            <div class="card">
+                <h2>📡 MQTT (Home Assistant)</h2>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="mqtt_enable" name="mqtt_enable" {% if config.getboolean('MQTT', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <label for="mqtt_enable">Enable MQTT Publishing</label>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="mqtt_broker">Broker IP / Hostname</label>
+                        <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.get('MQTT', 'BROKER', fallback='127.0.0.1') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_port">Port</label>
+                        <input type="number" id="mqtt_port" name="mqtt_port" value="{{ config.get('MQTT', 'PORT', fallback='1883') }}">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="mqtt_user">Username (Optional)</label>
+                        <input type="text" id="mqtt_user" name="mqtt_user" value="{{ config.get('MQTT', 'USER', fallback='') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_password">Password (Optional)</label>
+                        <input type="password" id="mqtt_password" name="mqtt_password" value="{{ config.get('MQTT', 'PASSWORD', fallback='') }}">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="mqtt_topic">Base Topic</label>
+                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ config.get('MQTT', 'TOPIC', fallback='tele/onu/gpon_stats') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_client_id">Client ID</label>
+                        <input type="text" id="mqtt_client_id" name="mqtt_client_id" value="{{ config.get('MQTT', 'CLIENT_ID', fallback='onu_monitor') }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- InfluxDB Section -->
+            <div class="card">
+                <h2>📈 InfluxDB (Grafana)</h2>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="influx_enable" name="influx_enable" {% if config.getboolean('INFLUXDB', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <label for="influx_enable">Enable InfluxDB Publishing</label>
+                </div>
+                <div class="form-group">
+                    <label for="influx_url">Server URL</label>
+                    <input type="text" id="influx_url" name="influx_url" value="{{ config.get('INFLUXDB', 'URL', fallback='http://127.0.0.1:8086') }}">
+                </div>
+                <div class="form-group">
+                    <label for="influx_token">API Token</label>
+                    <input type="password" id="influx_token" name="influx_token" value="{{ config.get('INFLUXDB', 'TOKEN', fallback='') }}">
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="influx_org">Organization</label>
+                        <input type="text" id="influx_org" name="influx_org" value="{{ config.get('INFLUXDB', 'ORG', fallback='home') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="influx_bucket">Bucket</label>
+                        <input type="text" id="influx_bucket" name="influx_bucket" value="{{ config.get('INFLUXDB', 'BUCKET', fallback='network_stats') }}">
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary">Save Configuration & Restart Monitor</button>
+        </form>
+    </div>
+</body>
+</html>

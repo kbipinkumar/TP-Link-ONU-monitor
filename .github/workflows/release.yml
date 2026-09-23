@@ -1,0 +1,35 @@
+name: Build and Release Debian Package
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger only on version tags like v1.0.0
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to create a release
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required so git describe --tags works in build_deb.sh
+
+      - name: Build Debian Package
+        run: |
+          chmod +x build_deb.sh
+          ./build_deb.sh
+
+      - name: Extract Version
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tp-link-onu-monitor_${{ steps.get_version.outputs.version }}_all.deb
+          generate_release_notes: true
