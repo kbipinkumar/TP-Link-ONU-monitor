@@ -105,3 +105,6 @@ This repository includes an auto-generated Grafana dashboard designed for the GP
 6. Click **Import**.
 
 Your GPON Optical Power trends, Current RX/TX Gauges, and Temperature timeseries will instantly populate.
+
+
+> **Disclaimer**: This is an LLM-generated project intended strictly for private/hobby use. It is provided "as is" without any warranties, guarantees, or official support. Please review the code and use it at your own risk before deploying it in any critical or production environments.
