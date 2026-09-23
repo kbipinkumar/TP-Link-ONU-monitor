@@ -2,6 +2,12 @@
 
 A Python script to scrape live GPON statistics (RX Power, TX Power, Temperature, Voltage, Bias Current) from a TP-Link XZ000-G7 GPON ONU. It natively publishes to MQTT with Home Assistant Auto-Discovery, as well as InfluxDB v2.
 
+## ⚠️ Network Routing Caveat
+
+Because the ONU is typically plugged into the WAN port of your primary router, its management IP address is often isolated on the WAN side rather than your local LAN. To allow this script to successfully reach the ONU from your LAN, you must ensure that your network is correctly configured to route traffic to the ONU's subnet. 
+
+Since routing and firewall configurations vary significantly between different router manufacturers and firmwares (e.g., OpenWrt, pfSense, UniFi, consumer routers), providing specific instructions for establishing this access is beyond the scope of this project.
+
 ## Deployment on Raspberry Pi (Debian Trixie)
 
 Debian Trixie (and Raspberry Pi OS based on it) enforces PEP-668, meaning system-wide `pip install` is disabled. Therefore, all the required dependencies need to be installed via the `apt` package manager as descibed below.
