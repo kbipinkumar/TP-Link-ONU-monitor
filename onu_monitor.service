@@ -1,0 +1,13 @@
+[Unit]
+Description=TP-Link GPON ONU Monitor Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=bipin
+Group=bipin
+WorkingDirectory=/home/bipin/onu
+ExecStart=/home/bipin/onu/.venv/bin/python /home/bipin/onu/onu_monitor.py
+
+[Install]
+WantedBy=multi-user.target

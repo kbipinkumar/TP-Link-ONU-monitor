@@ -1,0 +1,4 @@
+requests
+rsa
+paho-mqtt
+influxdb-client

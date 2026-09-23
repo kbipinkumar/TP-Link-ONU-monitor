@@ -1,0 +1,11 @@
+[Unit]
+Description=Timer for TP-Link GPON ONU Monitor Service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=onu_monitor.service
+
+[Install]
+WantedBy=timers.target
