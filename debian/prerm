@@ -6,4 +6,7 @@ systemctl disable onu_monitor.timer || true
 systemctl stop onu_monitor_web.service || true
 systemctl disable onu_monitor_web.service || true
 
+# Remove sudoers rule
+rm -f /etc/sudoers.d/onu-monitor
+
 exit 0

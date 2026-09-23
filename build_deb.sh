@@ -33,6 +33,7 @@ cp onu_config.example.ini packaging/debian_build/opt/onu_monitor/
 cp grafana_dashboard.json packaging/debian_build/opt/onu_monitor/
 cp web_gui/web_gui.py packaging/debian_build/opt/onu_monitor/
 cp web_gui/templates/index.html packaging/debian_build/opt/onu_monitor/templates/
+cp web_gui/templates/setup.html packaging/debian_build/opt/onu_monitor/templates/
 
 # Ensure Python scripts are executable
 chmod +x packaging/debian_build/opt/onu_monitor/*.py
@@ -46,8 +47,8 @@ After=network-online.target time-sync.target
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+User=onu-monitor
+Group=onu-monitor
 WorkingDirectory=/opt/onu_monitor
 ExecStart=/usr/bin/python3 -u /opt/onu_monitor/onu_monitor.py
 EOF
@@ -72,7 +73,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=onu-monitor
+Group=onu-monitor
 WorkingDirectory=/opt/onu_monitor
 ExecStart=/usr/bin/python3 /opt/onu_monitor/web_gui.py
 Restart=on-failure

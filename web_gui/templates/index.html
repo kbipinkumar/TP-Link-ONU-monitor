@@ -238,7 +238,7 @@
                     </div>
                     <div class="form-group">
                         <label for="onu_password">Web UI Password</label>
-                        <input type="password" id="onu_password" name="onu_password" value="{{ config.get('ONU', 'PASSWORD', fallback='') }}" required>
+                        <input type="password" id="onu_password" name="onu_password" placeholder="Leave blank to keep unchanged">
                     </div>
                 </div>
             </div>
@@ -267,7 +267,7 @@
                     </div>
                     <div class="form-group">
                         <label for="mqtt_password">Password (Optional)</label>
-                        <input type="password" id="mqtt_password" name="mqtt_password" value="{{ config.get('MQTT', 'PASSWORD', fallback='') }}">
+                        <input type="password" id="mqtt_password" name="mqtt_password" placeholder="Leave blank to keep unchanged">
                     </div>
                 </div>
                 <div class="grid-2">
@@ -295,7 +295,7 @@
                 </div>
                 <div class="form-group">
                     <label for="influx_token">API Token</label>
-                    <input type="password" id="influx_token" name="influx_token" value="{{ config.get('INFLUXDB', 'TOKEN', fallback='') }}">
+                    <input type="password" id="influx_token" name="influx_token" placeholder="Leave blank to keep unchanged">
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
