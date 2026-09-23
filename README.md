@@ -4,11 +4,28 @@ A Python script to scrape live GPON statistics (RX Power, TX Power, Temperature,
 
 ## ⚠️ Network Routing Caveat
 
-Because the ONU is typically plugged into the WAN port of your primary router, its management IP address is often isolated on the WAN side rather than your local LAN. To allow this script to successfully reach the ONU from your LAN, you must ensure that your network is correctly configured to route traffic to the ONU's subnet. 
+Because the ONU is typically plugged into the WAN port of your primary router, its management IP address is often isolated on the WAN side rather than your local LAN. To allow this script to successfully reach the ONU from your LAN, ensure that network is correctly configured to route traffic to the ONU's subnet. 
 
 Since routing and firewall configurations vary significantly between different router manufacturers and firmwares (e.g., OpenWrt, pfSense, UniFi, consumer routers), providing specific instructions for establishing this access is beyond the scope of this project.
 
-## Deployment on Raspberry Pi (Debian Trixie)
+## 📦 Easy Installation (Recommended)
+
+The easiest way to install the TP-Link GPON ONU Monitor is to download the prepackaged Debian binary (`.deb`) from the [GitHub Releases](../../releases) page. 
+
+Installing the `.deb` package automatically:
+- Installs all required Python dependencies.
+- Sets up a sleek Web GUI on port `8991` for easy configuration.
+- Configures the background scraper daemon and `systemd` timers.
+
+Simply download the latest `.deb` release and install it via `apt`:
+```bash
+sudo apt install ./tp-link-onu-monitor_*_all.deb
+```
+Once installed, open browser and navigate to `http://<your-device-ip>:8991` to configure credentials and monitoring settings!
+
+---
+
+## 🛠️ Manual Deployment on Raspberry Pi (Debian Trixie)
 
 Debian Trixie (and Raspberry Pi OS based on it) enforces PEP-668, meaning system-wide `pip install` is disabled. Therefore, all the required dependencies need to be installed via the `apt` package manager as descibed below.
 
@@ -29,9 +46,9 @@ cp onu_config.example.ini onu_config.ini
 ```
 
 Edit `onu_config.ini` to match your network settings:
-- Under **[ONU]**, set your `IP`, `USERNAME`, and `PASSWORD`.
+- Under **[ONU]**, set `IP`, `USERNAME`, and `PASSWORD`.
   - ***Note***: *If ONU's web login page only asks for a password and does not ask for a username, set `USERNAME = admin`. The TP-Link frontend hardcodes this value in the background.*
-- Under **[MQTT]**, set `ENABLE = True` and update `BROKER`. If your broker requires authentication, fill in `USER` and `PASSWORD`.
+- Under **[MQTT]**, set `ENABLE = True` and update `BROKER`. If broker requires authentication, fill in `USER` and `PASSWORD`.
 - Under **[INFLUXDB]**, set `ENABLE = True` and update `URL`, `TOKEN`, `ORG`, and `BUCKET`.
 
 ### 3. Install Dependencies
@@ -42,10 +59,10 @@ sudo apt update
 sudo apt install python3-requests python3-rsa python3-paho-mqtt python3-influxdb-client
 ```
 
-*(Alternatively, you can create a Python virtual environment and run `pip install -r requirements.txt`, but ensure your `systemd` service points to the python binary inside your `.venv`!)*
+*(Alternatively, create a Python virtual environment and run `pip install -r requirements.txt`, but ensure `systemd` service points to the python binary inside `.venv`!)*
 
 ### 4. Setup Systemd Timer (Run Periodically)
-To run the script automatically every 5 minutes in the background, we will use a `systemd` timer.
+To run the script automatically every 5 minutes in the background, use a `systemd` timer.
 
 Create the service file `/etc/systemd/system/onu_monitor.service`:
 ```ini
@@ -58,8 +75,8 @@ After=network-online.target time-sync.target
 Type=oneshot
 User=pi
 Group=pi
-WorkingDirectory=/home/pi/onu_monitor
-ExecStart=/usr/bin/python3 -u /home/pi/onu_monitor/onu_monitor.py
+WorkingDirectory=/<path to>/onu_monitor
+ExecStart=/usr/bin/python3 -u /<path to>/onu_monitor/onu_monitor.py
 ```
 
 Create the timer file `/etc/systemd/system/onu_monitor.timer`:
@@ -84,7 +101,7 @@ sudo systemctl enable onu_monitor.timer
 sudo systemctl start onu_monitor.timer
 ```
 
-You can check the logs at any time using:
+check the logs for errors using:
 ```bash
 sudo journalctl -u onu_monitor.service -f
 ```
@@ -103,14 +120,14 @@ Ensure that the **MQTT integration** is installed in Home Assistant. The sensors
 This repository includes an auto-generated Grafana dashboard designed for the GPON stats stored in InfluxDB. 
 
 ### How to Import the Dashboard:
-1. Ensure your script is actively pushing data to your InfluxDB bucket.
-2. In your Grafana Web UI, navigate to **Dashboards** -> **New** -> **Import**.
+1. Ensure script is actively pushing data to InfluxDB bucket.
+2. In Grafana Web UI, navigate to **Dashboards** -> **New** -> **Import**.
 3. Click **Upload JSON file** and select the `grafana_dashboard.json` file from this repository, or simply open the file in a text editor and copy/paste its contents into the **Import via panel json** box.
 4. Click **Load**.
-5. At the bottom, Grafana will ask you to map the `InfluxDB` data source. Select your configured InfluxDB instance from the dropdown.
+5. At the bottom, Grafana will ask you map the correct `InfluxDB` data source. Select the configured InfluxDB instance from the dropdown.
 6. Click **Import**.
 
-Your GPON Optical Power trends, Current RX/TX Gauges, and Temperature timeseries will instantly populate.
+GPON Optical Power trends, Current RX/TX Gauges, and Temperature timeseries will instantly populate.
 
 
 > **Disclaimer**: This is an LLM-generated project intended strictly for private/hobby use. It is provided "as is" without any warranties, guarantees, or official support. Please review the code and use it at your own risk before deploying it in any critical or production environments.
