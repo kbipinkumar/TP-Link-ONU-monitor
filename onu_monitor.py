@@ -16,7 +16,10 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 # --- Configuration ---
 config = configparser.ConfigParser()
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'onu_config.ini')
-config.read(config_path)
+if not config.read(config_path):
+    print(f"[FATAL] Configuration file not found or unreadable: {config_path}")
+    print("Please copy onu_config.example.ini to onu_config.ini and fill in your details.")
+    sys.exit(1)
 
 ONU_IP = config.get('ONU', 'IP', fallback="192.168.1.1")
 USERNAME = config.get('ONU', 'USERNAME', fallback="user")
