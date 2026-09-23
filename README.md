@@ -83,6 +83,23 @@ You can check the logs at any time using:
 sudo journalctl -u onu_monitor.service -f
 ```
 
+## Web configuration GUI
+
+The package ships a small Flask UI for editing `onu_config.ini`.
+
+- It listens on **127.0.0.1:8991** only. To use it from another machine, reverse-proxy that address and authenticate at the proxy (Authentik fits a homelab already running it). Do not bind Flask on a public interface.
+- HTTP Basic auth is required. The `.deb` generates a password on first install, prints it once, and stores `ONU_WEB_USER` / `ONU_WEB_PASSWORD` in `/etc/onu-monitor/web.env` (root-only, mode 600).
+- Password and token fields are rendered empty. Leave them blank to keep the stored value.
+- The web service and the monitor run as the system user `onu-monitor`. `onu_config.ini` is mode **640**, owned by that user. Restarting the timer is the only root action, delegated by `/etc/sudoers.d/onu-monitor` to `systemctl restart onu_monitor.timer`.
+
+For a checkout without the package, export the same two variables before starting the GUI:
+
+```bash
+export ONU_WEB_USER=admin
+export ONU_WEB_PASSWORD='choose-a-password'
+python3 web_gui/web_gui.py
+```
+
 ## Home Assistant Integration
 If MQTT is enabled, the script will automatically publish Home Assistant MQTT Discovery payloads to `homeassistant/sensor/onu_monitor/...`. 
 

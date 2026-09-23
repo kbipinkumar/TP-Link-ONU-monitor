@@ -1,0 +1,17 @@
+[Unit]
+Description=TP-Link GPON ONU Monitor - Web Configuration GUI
+After=network.target
+
+[Service]
+Type=simple
+User=onu-monitor
+Group=onu-monitor
+WorkingDirectory=/opt/onu_monitor
+EnvironmentFile=/etc/onu-monitor/web.env
+ExecStart=/usr/bin/python3 /opt/onu_monitor/web_gui.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

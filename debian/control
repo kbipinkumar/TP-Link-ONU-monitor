@@ -2,6 +2,7 @@ Package: tp-link-onu-monitor
 Version: 1.0.0
 Architecture: all
 Maintainer: Developer <dev@example.com>
-Depends: python3, python3-requests, python3-rsa, python3-paho-mqtt, python3-influxdb-client, python3-flask
+Depends: python3, python3-requests, python3-rsa, python3-paho-mqtt, python3-influxdb-client, python3-flask, adduser, sudo
 Description: TP-Link XZ000-G7 GPON ONU Monitor
- A daemon that scrapes optical stats from the TP-Link ONU and publishes them to MQTT and InfluxDB. Includes a Web GUI on port 8991 for easy configuration.
+ A daemon that scrapes optical stats from the TP-Link ONU and publishes them to MQTT and InfluxDB.
+ Includes a localhost-only Web GUI on port 8991 (HTTP Basic auth) for configuration.

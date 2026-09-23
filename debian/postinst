@@ -1,25 +1,68 @@
 #!/bin/bash
 set -e
 
+# Dedicated unprivileged account for the monitor and the web GUI.
+# The account can write onu_config.ini and, via sudoers, restart the timer.
+if ! id onu-monitor >/dev/null 2>&1; then
+    adduser --system --group --home /nonexistent --no-create-home --shell /usr/sbin/nologin onu-monitor
+fi
+
+install -d -m 755 -o root -g root /etc/onu-monitor
+install -d -m 755 -o root -g root /opt/onu_monitor
+
+# Initialize config file if it doesn't exist. The example file contains
+# placeholders only; real secrets are written later by the web GUI.
+if [ ! -f /opt/onu_monitor/onu_config.ini ]; then
+    cp /opt/onu_monitor/onu_config.example.ini /opt/onu_monitor/onu_config.ini
+fi
+
+# Service user owns the one file it must update. Mode 640 keeps secrets
+# unreadable by other accounts. The tree itself stays root-owned.
+chown onu-monitor:onu-monitor /opt/onu_monitor/onu_config.ini
+chmod 640 /opt/onu_monitor/onu_config.ini
+
+# Shared secret for the web GUI. systemd reads this as root and passes
+# the values into the service environment. Created once; upgrades keep it.
+AUTH_FILE=/etc/onu-monitor/web.env
+GENERATED_PASSWORD=""
+if [ ! -f "$AUTH_FILE" ]; then
+    GENERATED_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')
+    (
+        umask 077
+        cat > "$AUTH_FILE" << EOF
+ONU_WEB_USER=admin
+ONU_WEB_PASSWORD=${GENERATED_PASSWORD}
+EOF
+    )
+    chown root:root "$AUTH_FILE"
+    chmod 600 "$AUTH_FILE"
+fi
+
 systemctl daemon-reload || true
 systemctl enable onu_monitor.timer || true
 systemctl start onu_monitor.timer || true
 systemctl enable onu_monitor_web.service || true
-systemctl start onu_monitor_web.service || true
-
-# Initialize config file if it doesn't exist
-if [ ! -f /opt/onu_monitor/onu_config.ini ]; then
-    cp /opt/onu_monitor/onu_config.example.ini /opt/onu_monitor/onu_config.ini
-fi
-chmod 666 /opt/onu_monitor/onu_config.ini || true
+systemctl restart onu_monitor_web.service || true
 
 echo "================================================================"
-echo " TP-Link GPON ONU Monitor installed successfully!               "
-echo " Please configure your credentials and MQTT/InfluxDB settings   "
-echo " by accessing the Web GUI at:                                   "
+echo " TP-Link GPON ONU Monitor installed successfully.               "
+echo " Configure ONU, MQTT, and InfluxDB in the Web GUI.              "
 echo "                                                                "
-echo "          http://<your-device-ip>:8991                          "
+echo " The GUI listens on localhost only and requires HTTP Basic auth."
 echo "                                                                "
+echo "          http://127.0.0.1:8991                                 "
+if [ -n "$GENERATED_PASSWORD" ]; then
+    echo "          Username: admin                                       "
+    echo "          Password: ${GENERATED_PASSWORD}"
+    echo "                                                                "
+    echo " That password is stored in /etc/onu-monitor/web.env (mode 600)."
+else
+    echo "          Credentials: /etc/onu-monitor/web.env                 "
+fi
+echo "                                                                "
+echo " For remote access, reverse-proxy 127.0.0.1:8991 and            "
+echo " authenticate at the proxy (Authentik is a natural fit).        "
+echo " Do not expose Flask directly on a public interface.            "
 echo "================================================================"
 
 exit 0

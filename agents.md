@@ -20,6 +20,12 @@ This project scrapes optical statistics (RX/TX Power, Temperature, Voltage, Bias
 - If testing locally, duplicate `onu_config.example.ini` to `onu_config.ini` and populate the fields.
 - The virtual environment is located at `.venv/`. If executing the script via systemd, it must be invoked with `.venv/bin/python`.
 
+## Web GUI security
+- `web_gui/web_gui.py` binds to `127.0.0.1:8991` only. Do not bind `0.0.0.0`. Remote access goes through a reverse proxy that authenticates (Authentik).
+- HTTP Basic auth uses `ONU_WEB_USER` and `ONU_WEB_PASSWORD`. The `.deb` stores them in `/etc/onu-monitor/web.env` (mode 600). Do not hardcode them and do not put them in `onu_config.ini`.
+- Password and token inputs must render empty (`value=""`). A blank form field keeps the stored secret.
+- The packaged services run as the system user `onu-monitor`, not root. `onu_config.ini` is mode 640 and owned by that user. The only sudoers grant is `systemctl restart onu_monitor.timer`.
+
 ## Data Payloads
 - The GPON stats API is at `/cgi?9`. It expects an HTTP POST with the exact JSON payload: `{"operation":"gl","oid":"DEV2_OPTC_GPON_CFG","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`
 

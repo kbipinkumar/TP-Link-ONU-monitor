@@ -1,0 +1,3 @@
+# The web GUI restarts the monitor timer after saving onu_config.ini.
+# Nothing else is delegated.
+onu-monitor ALL=(root) NOPASSWD: /usr/bin/systemctl restart onu_monitor.timer

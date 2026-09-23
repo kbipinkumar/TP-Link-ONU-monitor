@@ -1,0 +1,17 @@
+[Unit]
+Description=TP-Link GPON ONU Monitor Service
+Wants=network-online.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=oneshot
+User=onu-monitor
+Group=onu-monitor
+WorkingDirectory=/opt/onu_monitor
+ExecStart=/usr/bin/python3 -u /opt/onu_monitor/onu_monitor.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
