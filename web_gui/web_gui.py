@@ -13,9 +13,9 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Strict',
 )
 
-# Listen on loopback only. Remote access belongs on a reverse proxy that
-# authenticates (for example Authentik), not on Flask bound to 0.0.0.0.
-BIND_HOST = '127.0.0.1'
+# The monitor runs on a headless host and is configured from another device
+# on the same LAN. Listen on every interface; HTTP Basic auth gates access.
+BIND_HOST = '0.0.0.0'
 BIND_PORT = 8991
 
 CONFIG_FILE = os.environ.get(

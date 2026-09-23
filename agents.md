@@ -21,7 +21,7 @@ This project scrapes optical statistics (RX/TX Power, Temperature, Voltage, Bias
 - The virtual environment is located at `.venv/`. If executing the script via systemd, it must be invoked with `.venv/bin/python`.
 
 ## Web GUI security
-- `web_gui/web_gui.py` binds to `127.0.0.1:8991` only. Do not bind `0.0.0.0`. Remote access goes through a reverse proxy that authenticates (Authentik).
+- `web_gui/web_gui.py` binds to `0.0.0.0:8991` so another device on the same LAN can configure a headless host. Keep HTTP Basic auth in front of that.
 - HTTP Basic auth uses `ONU_WEB_USER` and `ONU_WEB_PASSWORD`. The `.deb` stores them in `/etc/onu-monitor/web.env` (mode 600). Do not hardcode them and do not put them in `onu_config.ini`.
 - Password and token inputs must render empty (`value=""`). A blank form field keeps the stored secret.
 - The packaged services run as the system user `onu-monitor`, not root. `onu_config.ini` is mode 640 and owned by that user. The only sudoers grant is `systemctl restart onu_monitor.timer`.

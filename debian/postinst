@@ -48,9 +48,10 @@ echo "================================================================"
 echo " TP-Link GPON ONU Monitor installed successfully.               "
 echo " Configure ONU, MQTT, and InfluxDB in the Web GUI.              "
 echo "                                                                "
-echo " The GUI listens on localhost only and requires HTTP Basic auth."
+echo " The GUI listens on port 8991 and requires HTTP Basic auth."
+echo " Open it from another device on the same LAN:"
 echo "                                                                "
-echo "          http://127.0.0.1:8991                                 "
+echo "          http://<this-device-ip>:8991                          "
 if [ -n "$GENERATED_PASSWORD" ]; then
     echo "          Username: admin                                       "
     echo "          Password: ${GENERATED_PASSWORD}"
@@ -59,10 +60,6 @@ if [ -n "$GENERATED_PASSWORD" ]; then
 else
     echo "          Credentials: /etc/onu-monitor/web.env                 "
 fi
-echo "                                                                "
-echo " For remote access, reverse-proxy 127.0.0.1:8991 and            "
-echo " authenticate at the proxy (Authentik is a natural fit).        "
-echo " Do not expose Flask directly on a public interface.            "
 echo "================================================================"
 
 exit 0

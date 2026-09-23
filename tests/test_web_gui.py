@@ -61,8 +61,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         _write_config()
         self.client = gui.app.test_client()
 
-    def test_bind_is_loopback_only(self):
-        self.assertEqual(gui.BIND_HOST, '127.0.0.1')
+    def test_bind_accepts_lan_clients(self):
+        self.assertEqual(gui.BIND_HOST, '0.0.0.0')
 
     def test_missing_credentials_refuse_the_gui(self):
         os.environ['ONU_WEB_PASSWORD'] = ''

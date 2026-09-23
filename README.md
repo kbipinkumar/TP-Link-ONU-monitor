@@ -87,7 +87,7 @@ sudo journalctl -u onu_monitor.service -f
 
 The package ships a small Flask UI for editing `onu_config.ini`.
 
-- It listens on **127.0.0.1:8991** only. To use it from another machine, reverse-proxy that address and authenticate at the proxy (Authentik fits a homelab already running it). Do not bind Flask on a public interface.
+- It listens on port **8991** on all interfaces so you can open it from another device on the same LAN (`http://<server-ip>:8991`). The host itself is typically headless.
 - HTTP Basic auth is required. The `.deb` generates a password on first install, prints it once, and stores `ONU_WEB_USER` / `ONU_WEB_PASSWORD` in `/etc/onu-monitor/web.env` (root-only, mode 600).
 - Password and token fields are rendered empty. Leave them blank to keep the stored value.
 - The web service and the monitor run as the system user `onu-monitor`. `onu_config.ini` is mode **640**, owned by that user. Restarting the timer is the only root action, delegated by `/etc/sudoers.d/onu-monitor` to `systemctl restart onu_monitor.timer`.
