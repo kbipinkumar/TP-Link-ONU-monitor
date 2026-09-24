@@ -1,45 +1,50 @@
 #!/bin/bash
 set -e
 
-echo "Building Debian package..."
-
 # Get version from git tag, fallback to 1.0.0
 VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0")
 # Remove leading 'v' if present
 VERSION=${VERSION#v}
 echo "Detected version: $VERSION"
 
-# Setup packaging directory
-rm -rf packaging/debian_build
-mkdir -p packaging/debian_build/DEBIAN
-mkdir -p packaging/debian_build/opt/onu_monitor/templates
-mkdir -p packaging/debian_build/lib/systemd/system
+ARCHITECTURES=("amd64" "arm64")
 
-# Copy Debian control files
-cp debian/control packaging/debian_build/DEBIAN/control
-cp debian/postinst packaging/debian_build/DEBIAN/postinst
-cp debian/prerm packaging/debian_build/DEBIAN/prerm
+for ARCH in "${ARCHITECTURES[@]}"; do
+    echo "==================================================="
+    echo "Building Debian package for Architecture: $ARCH"
+    echo "==================================================="
 
-# Update DEBIAN/control with the correct version
-sed -i "s/^Version: .*/Version: $VERSION/" packaging/debian_build/DEBIAN/control
+    BUILD_DIR="packaging/debian_build_$ARCH"
 
-# Set standard permissions for DEBIAN hooks
-chmod 755 packaging/debian_build/DEBIAN/postinst
-chmod 755 packaging/debian_build/DEBIAN/prerm
+    # Setup packaging directory
+    rm -rf "$BUILD_DIR"
+    mkdir -p "$BUILD_DIR/DEBIAN"
+    mkdir -p "$BUILD_DIR/opt/onu_monitor"
+    mkdir -p "$BUILD_DIR/lib/systemd/system"
 
-# Copy python scripts and web UI
-cp onu_monitor.py packaging/debian_build/opt/onu_monitor/
-cp onu_config.example.ini packaging/debian_build/opt/onu_monitor/
-cp grafana_dashboard.json packaging/debian_build/opt/onu_monitor/
-cp web_gui/web_gui.py packaging/debian_build/opt/onu_monitor/
-cp web_gui/templates/index.html packaging/debian_build/opt/onu_monitor/templates/
-cp web_gui/templates/setup.html packaging/debian_build/opt/onu_monitor/templates/
+    # Copy Debian control files
+    cp debian/control "$BUILD_DIR/DEBIAN/control"
+    cp debian/postinst "$BUILD_DIR/DEBIAN/postinst"
+    cp debian/prerm "$BUILD_DIR/DEBIAN/prerm"
 
-# Ensure Python scripts are executable
-chmod +x packaging/debian_build/opt/onu_monitor/*.py
+    # Update DEBIAN/control with the correct version and arch
+    sed -i "s/^Version: .*/Version: $VERSION/" "$BUILD_DIR/DEBIAN/control"
+    sed -i "s/^Architecture: .*/Architecture: $ARCH/" "$BUILD_DIR/DEBIAN/control"
 
-# Recreate the systemd files cleanly
-cat << 'EOF' > packaging/debian_build/lib/systemd/system/onu_monitor.service
+    # Set standard permissions for DEBIAN hooks
+    chmod 755 "$BUILD_DIR/DEBIAN/postinst"
+    chmod 755 "$BUILD_DIR/DEBIAN/prerm"
+
+    # Compile the Go binary
+    echo "Compiling Go binary for $ARCH..."
+    GOOS=linux GOARCH=$ARCH go build -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
+
+    # Copy resources
+    cp onu_config.example.ini "$BUILD_DIR/opt/onu_monitor/"
+    cp grafana_dashboard.json "$BUILD_DIR/opt/onu_monitor/"
+
+    # Recreate the systemd files cleanly
+    cat << 'EOF' > "$BUILD_DIR/lib/systemd/system/onu_monitor.service"
 [Unit]
 Description=TP-Link GPON ONU Monitor Service
 Wants=network-online.target
@@ -50,10 +55,10 @@ Type=oneshot
 User=onu-monitor
 Group=onu-monitor
 WorkingDirectory=/opt/onu_monitor
-ExecStart=/usr/bin/python3 -u /opt/onu_monitor/onu_monitor.py
+ExecStart=/opt/onu_monitor/onu-monitor scrape
 EOF
 
-cat << 'EOF' > packaging/debian_build/lib/systemd/system/onu_monitor.timer
+    cat << 'EOF' > "$BUILD_DIR/lib/systemd/system/onu_monitor.timer"
 [Unit]
 Description=Timer for TP-Link GPON ONU Monitor Service
 
@@ -66,7 +71,7 @@ Unit=onu_monitor.service
 WantedBy=timers.target
 EOF
 
-cat << 'EOF' > packaging/debian_build/lib/systemd/system/onu_monitor_web.service
+    cat << 'EOF' > "$BUILD_DIR/lib/systemd/system/onu_monitor_web.service"
 [Unit]
 Description=TP-Link GPON ONU Monitor - Web Configuration GUI
 After=network.target
@@ -76,14 +81,15 @@ Type=simple
 User=onu-monitor
 Group=onu-monitor
 WorkingDirectory=/opt/onu_monitor
-ExecStart=/usr/bin/python3 /opt/onu_monitor/web_gui.py
+ExecStart=/opt/onu_monitor/onu-monitor web
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Build the package with root ownership
-dpkg-deb --root-owner-group --build packaging/debian_build "tp-link-onu-monitor_${VERSION}_all.deb"
+    # Build the package with root ownership
+    dpkg-deb --root-owner-group --build "$BUILD_DIR" "tp-link-onu-monitor_${VERSION}_${ARCH}.deb"
 
-echo "Done! Package built as tp-link-onu-monitor_${VERSION}_all.deb"
+    echo "Done! Package built as tp-link-onu-monitor_${VERSION}_${ARCH}.deb"
+done
