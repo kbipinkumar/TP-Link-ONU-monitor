@@ -25,21 +25,21 @@ Once installed, open browser and navigate to `http://<your-device-ip>:8991` to c
 
 ---
 
-## 🛠️ Manual Deployment on Raspberry Pi (Debian Trixie)
+## 🛠️ Manual Deployment (From Source)
 
-Debian Trixie (and Raspberry Pi OS based on it) enforces PEP-668, meaning system-wide `pip install` is disabled. Therefore, all the required dependencies need to be installed via the `apt` package manager as descibed below.
+Because the project is now written in Go, there are no Python dependency or virtual environment (PEP-668) headaches. You can compile a single static binary that runs anywhere.
 
-### 1. Clone or Copy the Repository
-Place `onu_monitor.py` into a directory, e.g., `/home/pi/onu_monitor`.
+### 1. Clone the Repository and Compile
+Ensure you have Go installed on your system (`sudo apt install golang` or from golang.org).
 
 ```bash
-mkdir -p /home/pi/onu_monitor
-cd /home/pi/onu_monitor
-# Copy the file here
+git clone https://github.com/kbipinkumar/TP-Link-ONU-monitor.git
+cd TP-Link-ONU-monitor
+go build -ldflags="-s -w" -o onu-monitor ./cmd/onu-monitor
 ```
 
 ### 2. Configure the Script
-Configuration is managed via an external `.ini` file to avoid touching the actual code. 
+Configuration is managed via an external `.ini` file. 
 Copy `onu_config.example.ini` to `onu_config.ini`:
 ```bash
 cp onu_config.example.ini onu_config.ini
@@ -47,19 +47,15 @@ cp onu_config.example.ini onu_config.ini
 
 Edit `onu_config.ini` to match your network settings:
 - Under **[ONU]**, set `IP`, `USERNAME`, and `PASSWORD`.
-  - ***Note***: *If ONU's web login page only asks for a password and does not ask for a username, set `USERNAME = admin`. The TP-Link frontend hardcodes this value in the background.*
+  - ***Note***: *If ONU's web login page only asks for a password and does not ask for a username, set `USERNAME = admin` or `USERNAME = user`. The TP-Link frontend hardcodes this value in the background.*
 - Under **[MQTT]**, set `ENABLE = True` and update `BROKER`. If broker requires authentication, fill in `USER` and `PASSWORD`.
 - Under **[INFLUXDB]**, set `ENABLE = True` and update `URL`, `TOKEN`, `ORG`, and `BUCKET`.
 
-### 3. Install Dependencies
-Install all required Python libraries via `apt`:
-
+### 3. Test the Scraper
+You can manually run the scraper to ensure your configuration is correct:
 ```bash
-sudo apt update
-sudo apt install python3-requests python3-rsa python3-paho-mqtt python3-influxdb-client
+./onu-monitor scrape
 ```
-
-*(Alternatively, create a Python virtual environment and run `pip install -r requirements.txt`, but ensure `systemd` service points to the python binary inside `.venv`!)*
 
 ### 4. Setup Systemd Timer (Run Periodically)
 To run the script automatically every 5 minutes in the background, use a `systemd` timer.
@@ -75,8 +71,8 @@ After=network-online.target time-sync.target
 Type=oneshot
 User=pi
 Group=pi
-WorkingDirectory=/<path to>/onu_monitor
-ExecStart=/usr/bin/python3 -u /<path to>/onu_monitor/onu_monitor.py
+WorkingDirectory=/<path to>/TP-Link-ONU-monitor
+ExecStart=/<path to>/TP-Link-ONU-monitor/onu-monitor scrape
 ```
 
 Create the timer file `/etc/systemd/system/onu_monitor.timer`:
@@ -101,7 +97,7 @@ sudo systemctl enable onu_monitor.timer
 sudo systemctl start onu_monitor.timer
 ```
 
-check the logs for errors using:
+Check the logs for errors using:
 ```bash
 sudo journalctl -u onu_monitor.service -f
 ```
