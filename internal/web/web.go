@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/ini.v1"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
@@ -336,8 +337,16 @@ func StartServer(port string) {
 	http.HandleFunc("/save", authMiddleware(SaveHandler))
 	http.HandleFunc("/update-webui", authMiddleware(UpdateWebUIHandler))
 	
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      nil,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  30 * time.Second,
+	}
+
 	log.Printf("Starting Web GUI on port %s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

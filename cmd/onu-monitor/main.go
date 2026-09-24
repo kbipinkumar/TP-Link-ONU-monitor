@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/cli"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/web"
 	"gopkg.in/ini.v1"
@@ -15,7 +16,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: onu-monitor <web|scrape|reset-password>")
+		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import>")
 		os.Exit(1)
 	}
 
@@ -28,6 +29,22 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "import":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: onu-monitor import <path/to/backup.ini>")
+			os.Exit(1)
+		}
+		backupPath := os.Args[2]
+		cfg, err := ini.Load(backupPath)
+		if err != nil {
+			log.Fatalf("Failed to load backup config file '%s': %v", backupPath, err)
+		}
+		if err := cfg.SaveTo(configPath); err != nil {
+			log.Fatalf("Failed to save imported config to '%s': %v", configPath, err)
+		}
+		fmt.Printf("Configuration successfully imported from '%s' to '%s'\n", backupPath, configPath)
+	case "setup":
+		cli.RunInteractiveSetup(configPath)
 	case "web":
 		web.Init(configPath)
 		web.StartServer("8991")
@@ -110,7 +127,7 @@ func main() {
 		fmt.Println("Please navigate to the Web UI to set up a new username and password.")
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Println("Usage: onu-monitor <web|scrape|reset-password>")
+		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import>")
 		os.Exit(1)
 	}
 }

@@ -48,18 +48,33 @@ Edit `onu_config.ini` to match your network settings:
 - Under **[MQTT]**, set `ENABLE = True` and update `BROKER`. If broker requires authentication, fill in `USER` and `PASSWORD`.
 - Under **[INFLUXDB]**, set `ENABLE = True` and update `URL`, `TOKEN`, `ORG`, and `BUCKET`.
 
-### 3. Test the Scraper or Use the Web GUI
-You can manually run the scraper to ensure your configuration is correct:
+### 3. Configure and Test the Scraper
+
+You can seamlessly configure your credentials and monitoring settings using any of the following methods:
+
+**Method A: Interactive CLI Wizard**
+Run the built-in terminal UI wizard to be guided step-by-step through setting up your Web UI credentials, ONU login, MQTT, and InfluxDB:
 ```bash
-./onu-monitor scrape
+./onu-monitor setup
 ```
 
-Alternatively, you can launch the Web GUI to seamlessly configure your credentials and settings from a browser:
+**Method B: Web GUI**
+Alternatively, launch the Web GUI to configure everything from your browser:
 ```bash
 ./onu-monitor web
 ```
 *(Once running, navigate to `http://<your-device-ip>:8991` in a browser).*
 
+**Method C: Import from Backup**
+If you have an existing or backed-up `.ini` configuration file, you can import it directly:
+```bash
+./onu-monitor import /path/to/backup.ini
+```
+
+Once configured, you can manually run the scraper to ensure your settings are correct:
+```bash
+./onu-monitor scrape
+```
 ### Web GUI Password Reset
 If you forget your Web GUI username or password, you can reset it locally from the terminal. This will clear the credentials and prompt you to set them up again upon your next visit to the Web GUI:
 ```bash
