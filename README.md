@@ -18,7 +18,7 @@ Installing the `.deb` package automatically:
 
 Simply download the latest `.deb` release and install it via `apt`:
 ```bash
-sudo apt install ./tp-link-onu-monitor_*_all.deb
+sudo apt install ./tp-link-onu-monitor_*_$(dpkg --print-architecture).deb
 ```
 Once installed, open a browser and navigate to `http://<your-device-ip>:8991` to configure credentials and monitoring settings.
 

@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -51,17 +52,17 @@ type Config struct {
 }
 
 type GPONStats struct {
-	RxPowerDBm    float64
-	TxPowerDBm    float64
-	TemperatureC  float64
-	VoltageV      float64
-	VoltageMV     float64
-	BiasCurrentMA float64
-	Status        string
-	PonType       string
-	XPonStatus    string
-	RawRxPower    interface{} `json:"RawRxPower"`
-	RawTxPower    interface{} `json:"RawTxPower"`
+	RxPowerDBm    float64     `json:"rx_power_dbm"`
+	TxPowerDBm    float64     `json:"tx_power_dbm"`
+	TemperatureC  float64     `json:"temperature_c"`
+	VoltageV      float64     `json:"voltage_v"`
+	VoltageMV     float64     `json:"voltage_mv"`
+	BiasCurrentMA float64     `json:"bias_current_ma"`
+	Status        string      `json:"status"`
+	PonType       string      `json:"pon_type"`
+	XPonStatus    string      `json:"xpon_status"`
+	RawRxPower    interface{} `json:"raw_rx_power"`
+	RawTxPower    interface{} `json:"raw_tx_power"`
 }
 
 type SystemStatus struct {
@@ -135,7 +136,10 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 
 	// 1. Fetch RSA keys
 	log.Println("Fetching RSA keys from /cgi/getParm...")
-	req, _ := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi/getParm", nil)
+	req, err := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi/getParm", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create RSA keys request: %w", err)
+	}
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "*/*")
@@ -194,7 +198,10 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	loginURL := fmt.Sprintf("http://%s/cgi/login?UserName=%s&Passwd=%s&Action=1&LoginStatus=0", 
 		cfg.ONU.IP, url.QueryEscape(hexUser), url.QueryEscape(hexPass))
 	
-	req, _ = http.NewRequest("POST", loginURL, strings.NewReader(""))
+	req, err = http.NewRequest("POST", loginURL, strings.NewReader(""))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create login request: %w", err)
+	}
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "*/*")
@@ -215,8 +222,61 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		return nil, fmt.Errorf("login failed: %s", respText)
 	}
 
+	var tokenID string
+
+	// Setup robust defer to always log out and prevent 71233 session limit errors
+	defer func() {
+		// If token parsing failed earlier, we need to fetch it now for logout
+		if tokenID == "" {
+			req, err := http.NewRequest("GET", "http://"+cfg.ONU.IP+"/", nil)
+			if err == nil {
+				req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+				req.Header.Set("User-Agent", "Mozilla/5.0")
+				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+				if resp, err := client.Do(req); err == nil {
+					bodyBytes, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					re := regexp.MustCompile(`var token="([^"]+)";`)
+					match := re.FindStringSubmatch(string(bodyBytes))
+					if len(match) >= 2 {
+						tokenID = match[1]
+					}
+				}
+			}
+		}
+
+		if tokenID != "" {
+			logoutPayload := `{"operation":"cgi","oid":"/cgi/logout","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
+			logoutReq, err := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi?9", bytes.NewBufferString(logoutPayload))
+			if err != nil {
+				log.Printf("Failed to create logout request: %v", err)
+				return
+			}
+			logoutReq.Header.Set("TokenID", tokenID)
+			logoutReq.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+			logoutReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+			resp, err := client.Do(logoutReq)
+			if err != nil {
+				log.Printf("Logout request failed: %v", err)
+				return
+			}
+			defer resp.Body.Close()
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if strings.Contains(string(bodyBytes), "$.ret=0;") {
+				log.Println("Session logged out successfully.")
+			} else {
+				log.Printf("Logout response unexpected: %s", string(bodyBytes))
+			}
+		} else {
+			log.Println("Could not obtain TokenID for logout; session may remain open.")
+		}
+	}()
+
 	// 3. Fetch root HTML to get TokenID
-	req, _ = http.NewRequest("GET", "http://"+cfg.ONU.IP+"/", nil)
+	req, err = http.NewRequest("GET", "http://"+cfg.ONU.IP+"/", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create root HTML request: %w", err)
+	}
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -238,23 +298,15 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		log.Printf("ERROR: Root HTML snippet: %s", snippet)
 		return nil, fmt.Errorf("could not find var token in root HTML")
 	}
-	tokenID := match[1]
-
-	// Setup robust defer to always log out and prevent 71233 session limit errors
-	defer func() {
-		logoutPayload := `{"operation":"cgi","oid":"/cgi/logout","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
-		logoutReq, _ := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi?9", bytes.NewBufferString(logoutPayload))
-		logoutReq.Header.Set("TokenID", tokenID)
-		logoutReq.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
-		logoutReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-		client.Do(logoutReq)
-		log.Println("Session logged out successfully.")
-	}()
+	tokenID = match[1]
 
 	// 4. Fetch GPON stats
 	statsURL := "http://" + cfg.ONU.IP + "/cgi?9"
 	payload := `{"operation":"gl","oid":"DEV2_OPTC_GPON_CFG","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
-	req, _ = http.NewRequest("POST", statsURL, bytes.NewBufferString(payload))
+	req, err = http.NewRequest("POST", statsURL, bytes.NewBufferString(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stats request: %w", err)
+	}
 	req.Header.Set("TokenID", tokenID)
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
@@ -344,11 +396,11 @@ func PublishMQTT(stats *GPONStats, cfg *Config) {
 	stateTopic := baseTopic + "/state"
 
 	sensors := map[string]map[string]string{
-		"rx_power":     {"name": "ONU RX Power", "unit": "dBm", "class": "signal_strength", "val": "RxPowerDBm"},
-		"tx_power":     {"name": "ONU TX Power", "unit": "dBm", "class": "signal_strength", "val": "TxPowerDBm"},
-		"temperature":  {"name": "ONU Temperature", "unit": "°C", "class": "temperature", "val": "TemperatureC"},
-		"voltage":      {"name": "ONU Supply Voltage", "unit": "mV", "class": "voltage", "val": "VoltageMV"},
-		"bias_current": {"name": "ONU Bias Current", "unit": "mA", "class": "current", "val": "BiasCurrentMA"},
+		"rx_power":     {"name": "ONU RX Power", "unit": "dBm", "class": "signal_strength", "val": "rx_power_dbm"},
+		"tx_power":     {"name": "ONU TX Power", "unit": "dBm", "class": "signal_strength", "val": "tx_power_dbm"},
+		"temperature":  {"name": "ONU Temperature", "unit": "°C", "class": "temperature", "val": "temperature_c"},
+		"voltage":      {"name": "ONU Supply Voltage", "unit": "mV", "class": "voltage", "val": "voltage_mv"},
+		"bias_current": {"name": "ONU Bias Current", "unit": "mA", "class": "current", "val": "bias_current_ma"},
 	}
 
 	for key, info := range sensors {
@@ -367,19 +419,32 @@ func PublishMQTT(stats *GPONStats, cfg *Config) {
 			},
 		}
 		payloadBytes, _ := json.Marshal(configPayload)
-		client.Publish(configTopic, 0, true, payloadBytes)
+		if token := client.Publish(configTopic, 0, true, payloadBytes); token.WaitTimeout(5*time.Second) {
+			if token.Error() != nil {
+				log.Printf("MQTT publish config error: %v", token.Error())
+			}
+		} else {
+			log.Printf("MQTT publish config timed out")
+		}
 	}
 
 	statsBytes, _ := json.Marshal(stats)
-	client.Publish(stateTopic, 0, true, statsBytes)
-	log.Printf("Published to MQTT state topic %s", stateTopic)
+	if token := client.Publish(stateTopic, 0, true, statsBytes); token.WaitTimeout(5*time.Second) {
+		if token.Error() != nil {
+			log.Printf("MQTT publish state error: %v", token.Error())
+		} else {
+			log.Printf("Published to MQTT state topic %s", stateTopic)
+		}
+	} else {
+		log.Printf("MQTT publish state timed out")
+	}
 }
 
 func PublishInfluxDB(stats *GPONStats, cfg *Config) {
 	client := influxdb2.NewClient(cfg.INFLUXDB.URL, cfg.INFLUXDB.Token)
 	defer client.Close()
 	
-	writeAPI := client.WriteAPI(cfg.INFLUXDB.Org, cfg.INFLUXDB.Bucket)
+	writeAPI := client.WriteAPIBlocking(cfg.INFLUXDB.Org, cfg.INFLUXDB.Bucket)
 	
 	parseRaw := func(v interface{}) int64 {
 		switch i := v.(type) {
@@ -405,7 +470,13 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) {
 		AddField("raw_tx_power", parseRaw(stats.RawTxPower)).
 		SetTime(time.Now())
 
-	writeAPI.WritePoint(p)
-	writeAPI.Flush()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	err := writeAPI.WritePoint(ctx, p)
+	if err != nil {
+		log.Printf("InfluxDB write error: %v", err)
+		return
+	}
 	log.Printf("Written to InfluxDB bucket %s", cfg.INFLUXDB.Bucket)
 }

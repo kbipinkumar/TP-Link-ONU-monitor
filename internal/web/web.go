@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,8 +107,15 @@ func checkAuth(r *http.Request) bool {
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ensureConfig()
-		cfg, _ := ini.Load(configPath)
+		if err := ensureConfig(); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		cfg, err := ini.Load(configPath)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		pass := cfg.Section("WEBUI").Key("PASSWORD").String()
 
 		if pass == "" {
@@ -125,8 +133,15 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func SetupHandler(w http.ResponseWriter, r *http.Request) {
-	ensureConfig()
-	cfg, _ := ini.Load(configPath)
+	if err := ensureConfig(); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	cfg, err := ini.Load(configPath)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	pass := cfg.Section("WEBUI").Key("PASSWORD").String()
 
 	if pass != "" {
@@ -142,7 +157,11 @@ func SetupHandler(w http.ResponseWriter, r *http.Request) {
 		if username != "" && password != "" {
 			cfg.Section("WEBUI").Key("USERNAME").SetValue(username)
 			cfg.Section("WEBUI").Key("PASSWORD").SetValue(password)
-			cfg.SaveTo(configPath)
+			if err := cfg.SaveTo(configPath); err != nil {
+				setFlash(w, "warning", "Failed to save configuration.")
+				http.Redirect(w, r, "/setup", http.StatusFound)
+				return
+			}
 			setFlash(w, "success", "Web GUI secured successfully! Please login.")
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
@@ -162,7 +181,11 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	config, _ := scraper.LoadConfig(configPath)
+	config, err := scraper.LoadConfig(configPath)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	statusPath := filepath.Join(filepath.Dir(configPath), "status.json")
 	status, _ := scraper.ReadStatus(statusPath)
 	msgs := getFlash(w, r)
@@ -179,6 +202,21 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// CSRF / Same-Origin validation
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = r.Header.Get("Referer")
+	}
+	if origin == "" {
+		http.Error(w, "Forbidden: Missing Origin/Referer header", http.StatusForbidden)
+		return
+	}
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Host != r.Host {
+		http.Error(w, "Forbidden: Cross-Origin Request", http.StatusForbidden)
+		return
+	}
+
 	r.ParseForm()
 	
 	cfg, err := ini.Load(configPath)
