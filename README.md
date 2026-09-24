@@ -60,6 +60,12 @@ Alternatively, you can launch the Web GUI to seamlessly configure your credentia
 ```
 *(Once running, navigate to `http://<your-device-ip>:8991` in a browser).*
 
+### Web GUI Password Reset
+If you forget your Web GUI username or password, you can reset it locally from the terminal. This will clear the credentials and prompt you to set them up again upon your next visit to the Web GUI:
+```bash
+./onu-monitor reset-password
+```
+
 ### 4. Setup Systemd Timer (Run Periodically)
 To run the script automatically every 5 minutes in the background, use a `systemd` timer.
 

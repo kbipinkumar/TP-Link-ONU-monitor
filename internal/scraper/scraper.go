@@ -377,7 +377,7 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	return stats, nil
 }
 
-func PublishMQTT(stats *GPONStats, cfg *Config) {
+func PublishMQTT(stats *GPONStats, cfg *Config) error {
 	opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.MQTT.Broker, cfg.MQTT.Port))
 	opts.SetClientID(cfg.MQTT.ClientID)
 	if cfg.MQTT.User != "" {
@@ -388,7 +388,7 @@ func PublishMQTT(stats *GPONStats, cfg *Config) {
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		log.Printf("MQTT connection failed: %v", token.Error())
-		return
+		return fmt.Errorf("connection failed: %w", token.Error())
 	}
 	defer client.Disconnect(250)
 
@@ -422,9 +422,11 @@ func PublishMQTT(stats *GPONStats, cfg *Config) {
 		if token := client.Publish(configTopic, 0, true, payloadBytes); token.WaitTimeout(5*time.Second) {
 			if token.Error() != nil {
 				log.Printf("MQTT publish config error: %v", token.Error())
+				return fmt.Errorf("publish config error: %w", token.Error())
 			}
 		} else {
 			log.Printf("MQTT publish config timed out")
+			return fmt.Errorf("publish config timed out")
 		}
 	}
 
@@ -432,15 +434,19 @@ func PublishMQTT(stats *GPONStats, cfg *Config) {
 	if token := client.Publish(stateTopic, 0, true, statsBytes); token.WaitTimeout(5*time.Second) {
 		if token.Error() != nil {
 			log.Printf("MQTT publish state error: %v", token.Error())
+			return fmt.Errorf("publish state error: %w", token.Error())
 		} else {
 			log.Printf("Published to MQTT state topic %s", stateTopic)
 		}
 	} else {
 		log.Printf("MQTT publish state timed out")
+		return fmt.Errorf("publish state timed out")
 	}
+	
+	return nil
 }
 
-func PublishInfluxDB(stats *GPONStats, cfg *Config) {
+func PublishInfluxDB(stats *GPONStats, cfg *Config) error {
 	client := influxdb2.NewClient(cfg.INFLUXDB.URL, cfg.INFLUXDB.Token)
 	defer client.Close()
 	
@@ -476,7 +482,9 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) {
 	err := writeAPI.WritePoint(ctx, p)
 	if err != nil {
 		log.Printf("InfluxDB write error: %v", err)
-		return
+		return fmt.Errorf("write error: %w", err)
 	}
 	log.Printf("Written to InfluxDB bucket %s", cfg.INFLUXDB.Bucket)
+	
+	return nil
 }

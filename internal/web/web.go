@@ -187,7 +187,10 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	statusPath := filepath.Join(filepath.Dir(configPath), "status.json")
-	status, _ := scraper.ReadStatus(statusPath)
+	status, err := scraper.ReadStatus(statusPath)
+	if err != nil {
+		status = nil
+	}
 	msgs := getFlash(w, r)
 	
 	tpls.ExecuteTemplate(w, "index.html", TemplateData{
@@ -276,10 +279,62 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+func UpdateWebUIHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// CSRF / Same-Origin validation
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = r.Header.Get("Referer")
+	}
+	if origin == "" {
+		http.Error(w, "Forbidden: Missing Origin/Referer header", http.StatusForbidden)
+		return
+	}
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Host != r.Host {
+		http.Error(w, "Forbidden: Cross-Origin Request", http.StatusForbidden)
+		return
+	}
+
+	r.ParseForm()
+	
+	cfg, err := ini.Load(configPath)
+	if err != nil {
+		setFlash(w, "warning", "Failed to load config file")
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	username := r.FormValue("webui_username")
+	password := r.FormValue("webui_password")
+
+	if username != "" && password != "" {
+		cfg.Section("WEBUI").Key("USERNAME").SetValue(username)
+		cfg.Section("WEBUI").Key("PASSWORD").SetValue(password)
+		if err := cfg.SaveTo(configPath); err != nil {
+			setFlash(w, "warning", "Failed to save configuration.")
+		} else {
+			setFlash(w, "success", "Web GUI credentials updated! Please log in again.")
+			// Invalidate current Basic Auth session by sending a 401
+			w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
+			http.Error(w, "Credentials updated. Please log in again.", http.StatusUnauthorized)
+			return
+		}
+	} else {
+		setFlash(w, "warning", "Username and password cannot be empty.")
+	}
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 func StartServer(port string) {
 	http.HandleFunc("/setup", SetupHandler)
 	http.HandleFunc("/", authMiddleware(IndexHandler))
 	http.HandleFunc("/save", authMiddleware(SaveHandler))
+	http.HandleFunc("/update-webui", authMiddleware(UpdateWebUIHandler))
 	
 	log.Printf("Starting Web GUI on port %s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {

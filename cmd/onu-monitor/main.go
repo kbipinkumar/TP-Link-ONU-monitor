@@ -10,11 +10,12 @@ import (
 
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/web"
+	"gopkg.in/ini.v1"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: onu-monitor <web|scrape>")
+		fmt.Println("Usage: onu-monitor <web|scrape|reset-password>")
 		os.Exit(1)
 	}
 
@@ -41,21 +42,27 @@ func main() {
 		config, err := scraper.LoadConfig(configPath)
 		if err != nil {
 			status.LastError = fmt.Sprintf("Config error: %v", err)
-			scraper.WriteStatus(statusPath, status)
+			if wErr := scraper.WriteStatus(statusPath, status); wErr != nil {
+				log.Printf("Failed to write status to %s: %v", statusPath, wErr)
+			}
 			log.Fatalf("[FATAL] Configuration file not found or unreadable: %v", err)
 		}
 		
 		if config.ONU.Password == "YOUR_ROUTER_PASSWORD" || config.ONU.Password == "" {
 			log.Println("[INFO] Setup incomplete. Please complete the Web UI setup to configure the router password.")
 			status.LastError = "Setup incomplete. Please complete the Web UI setup."
-			scraper.WriteStatus(statusPath, status)
+			if wErr := scraper.WriteStatus(statusPath, status); wErr != nil {
+				log.Printf("Failed to write status to %s: %v", statusPath, wErr)
+			}
 			os.Exit(0) // Exit cleanly so systemd doesn't mark it as a failure loop
 		}
 		
 		stats, err := scraper.GetGPONStats(config)
 		if err != nil {
 			status.LastError = fmt.Sprintf("Scrape error: %v", err)
-			scraper.WriteStatus(statusPath, status)
+			if wErr := scraper.WriteStatus(statusPath, status); wErr != nil {
+				log.Printf("Failed to write status to %s: %v", statusPath, wErr)
+			}
 			log.Printf("Failed to retrieve statistics: %v", err)
 			os.Exit(1)
 		}
@@ -69,18 +76,41 @@ func main() {
 		status.Stats = stats
 		
 		if config.MQTT.Enable {
-			scraper.PublishMQTT(stats, config)
-			status.LastMqttTime = now
+			if err := scraper.PublishMQTT(stats, config); err != nil {
+				status.LastError = fmt.Sprintf("MQTT error: %v", err)
+			} else {
+				status.LastMqttTime = now
+			}
 		}
 		if config.INFLUXDB.Enable {
-			scraper.PublishInfluxDB(stats, config)
-			status.LastInfluxTime = now
+			if err := scraper.PublishInfluxDB(stats, config); err != nil {
+				if status.LastError != "" {
+					status.LastError += "; "
+				}
+				status.LastError += fmt.Sprintf("InfluxDB error: %v", err)
+			} else {
+				status.LastInfluxTime = now
+			}
 		}
 		
-		scraper.WriteStatus(statusPath, status)
+		if wErr := scraper.WriteStatus(statusPath, status); wErr != nil {
+			log.Printf("Failed to write status to %s: %v", statusPath, wErr)
+		}
+	case "reset-password":
+		cfg, err := ini.Load(configPath)
+		if err != nil {
+			log.Fatalf("Failed to load config file: %v", err)
+		}
+		cfg.Section("WEBUI").Key("USERNAME").SetValue("")
+		cfg.Section("WEBUI").Key("PASSWORD").SetValue("")
+		if err := cfg.SaveTo(configPath); err != nil {
+			log.Fatalf("Failed to save config file: %v", err)
+		}
+		fmt.Println("Web UI credentials have been successfully reset.")
+		fmt.Println("Please navigate to the Web UI to set up a new username and password.")
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Println("Usage: onu-monitor <web|scrape>")
+		fmt.Println("Usage: onu-monitor <web|scrape|reset-password>")
 		os.Exit(1)
 	}
 }
