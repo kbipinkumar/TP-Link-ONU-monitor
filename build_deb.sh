@@ -35,9 +35,9 @@ for ARCH in "${ARCHITECTURES[@]}"; do
     chmod 755 "$BUILD_DIR/DEBIAN/postinst"
     chmod 755 "$BUILD_DIR/DEBIAN/prerm"
 
-    # Compile the Go binary
+    # Compile the Go binary (optimized for low RAM environments like Raspberry Pi)
     echo "Compiling Go binary for $ARCH..."
-    GOOS=linux GOARCH=$ARCH go build -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
+    env GOMEMLIMIT=512MiB GOGC=50 GOOS=linux GOARCH=$ARCH go build -p 1 -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
 
     # Copy resources
     cp onu_config.example.ini "$BUILD_DIR/opt/onu_monitor/"
