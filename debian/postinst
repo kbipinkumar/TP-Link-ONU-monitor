@@ -1,14 +1,24 @@
 #!/bin/bash
 set -e
 
-# Create dedicated user for the service
+# Create dedicated user and group for the service
+if ! getent group onu-monitor >/dev/null; then
+    groupadd -r onu-monitor
+fi
 if ! id "onu-monitor" &>/dev/null; then
-    useradd -r -s /usr/sbin/nologin -c "TP-Link ONU Monitor Service User" onu-monitor
+    useradd -r -g onu-monitor -s /usr/sbin/nologin -c "TP-Link ONU Monitor Service User" onu-monitor
 fi
 
 # Set up sudoers rule so the web GUI can restart the monitor timer
 echo "onu-monitor ALL=(ALL) NOPASSWD: /bin/systemctl restart onu_monitor.timer" > /etc/sudoers.d/onu-monitor
 chmod 0440 /etc/sudoers.d/onu-monitor
+
+# Initialize config file if it doesn't exist
+if [ ! -f /opt/onu_monitor/onu_config.ini ]; then
+    cp /opt/onu_monitor/onu_config.example.ini /opt/onu_monitor/onu_config.ini
+fi
+chown -R onu-monitor:onu-monitor /opt/onu_monitor || true
+chmod 640 /opt/onu_monitor/onu_config.ini || true
 
 systemctl daemon-reload || true
 systemctl enable onu_monitor.timer || true
@@ -16,12 +26,7 @@ systemctl start onu_monitor.timer || true
 systemctl enable onu_monitor_web.service || true
 systemctl start onu_monitor_web.service || true
 
-# Initialize config file if it doesn't exist
-if [ ! -f /opt/onu_monitor/onu_config.ini ]; then
-    cp /opt/onu_monitor/onu_config.example.ini /opt/onu_monitor/onu_config.ini
-fi
-chown onu-monitor:onu-monitor /opt/onu_monitor/onu_config.ini || true
-chmod 640 /opt/onu_monitor/onu_config.ini || true
+
 
 echo "================================================================"
 echo " TP-Link GPON ONU Monitor installed successfully!               "
