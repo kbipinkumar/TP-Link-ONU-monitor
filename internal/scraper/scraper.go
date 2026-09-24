@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -59,8 +60,36 @@ type GPONStats struct {
 	Status        string
 	PonType       string
 	XPonStatus    string
-	RawRxPower    interface{}
-	RawTxPower    interface{}
+	RawRxPower    interface{} `json:"RawRxPower"`
+	RawTxPower    interface{} `json:"RawTxPower"`
+}
+
+type SystemStatus struct {
+	LastScrapeTime   string     `json:"last_scrape_time"`
+	LastMqttTime     string     `json:"last_mqtt_time"`
+	LastInfluxTime   string     `json:"last_influx_time"`
+	LastError        string     `json:"last_error"`
+	Stats            *GPONStats `json:"stats"`
+}
+
+func ReadStatus(path string) (*SystemStatus, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return &SystemStatus{}, err
+	}
+	var status SystemStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return &SystemStatus{}, err
+	}
+	return &status, nil
+}
+
+func WriteStatus(path string, status *SystemStatus) error {
+	data, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func LoadConfig(path string) (*Config, error) {

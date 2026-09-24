@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -31,6 +32,7 @@ type FlashMessage struct {
 type TemplateData struct {
 	Messages []FlashMessage
 	Config   *scraper.Config
+	Status   *scraper.SystemStatus
 }
 
 var configPath string
@@ -161,9 +163,15 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	config, _ := scraper.LoadConfig(configPath)
+	statusPath := filepath.Join(filepath.Dir(configPath), "status.json")
+	status, _ := scraper.ReadStatus(statusPath)
 	msgs := getFlash(w, r)
 	
-	tpls.ExecuteTemplate(w, "index.html", TemplateData{Messages: msgs, Config: config})
+	tpls.ExecuteTemplate(w, "index.html", TemplateData{
+		Messages: msgs,
+		Config:   config,
+		Status:   status,
+	})
 }
 
 func SaveHandler(w http.ResponseWriter, r *http.Request) {

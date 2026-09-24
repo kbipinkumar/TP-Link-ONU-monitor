@@ -221,6 +221,58 @@
             </div>
         {{ end }}
 
+		<!-- Status Dashboard -->
+		<div class="card">
+			<h2>📊 Live Status Dashboard</h2>
+			
+			{{ if .Status }}
+				{{ if .Status.LastError }}
+				<div class="flash-message flash-warning" style="margin-bottom: 20px;">
+					<strong>Alert:</strong> {{ .Status.LastError }}
+				</div>
+				{{ end }}
+
+				<div class="grid-2" style="margin-bottom: 20px;">
+					<div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+						<div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">Last Scrape Time</div>
+						<div class="local-time" data-time="{{ .Status.LastScrapeTime }}" style="font-weight: 600; font-family: monospace;">{{ if .Status.LastScrapeTime }}{{ .Status.LastScrapeTime }}{{ else }}Never{{ end }}</div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+						<div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">Last MQTT Publish</div>
+						<div class="local-time" data-time="{{ .Status.LastMqttTime }}" style="font-weight: 600; font-family: monospace;">{{ if .Status.LastMqttTime }}{{ .Status.LastMqttTime }}{{ else }}Never{{ end }}</div>
+					</div>
+				</div>
+
+				{{ if .Status.Stats }}
+				<h3 style="font-size: 1.1rem; margin-top: 0; margin-bottom: 15px; color: var(--text-primary);">Latest Optical Metrics</h3>
+				<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">RX Power</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: {{ if lt .Status.Stats.RxPowerDBm -27.0 }}#ef4444{{ else }}#34d399{{ end }};">{{ printf "%.2f" .Status.Stats.RxPowerDBm }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">dBm</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">TX Power</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: #60a5fa;">{{ printf "%.2f" .Status.Stats.TxPowerDBm }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">dBm</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">Temperature</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: #facc15;">{{ printf "%.2f" .Status.Stats.TemperatureC }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">°C</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">Voltage</div>
+						<div style="font-size: 1.4rem; font-weight: 700;">{{ printf "%.2f" .Status.Stats.VoltageV }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">V</span></div>
+					</div>
+				</div>
+				{{ end }}
+			{{ else }}
+				<div style="text-align: center; padding: 30px; background: rgba(15, 23, 42, 0.4); border-radius: 8px; border: 1px dashed var(--border-color);">
+					<div style="font-size: 2rem; margin-bottom: 10px;">⏳</div>
+					<div style="color: var(--text-secondary); font-size: 1.05rem;">No status data available yet.</div>
+					<div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">The background scraper runs every 5 minutes. Please wait for the first run or click "Save Configuration" to restart the timer.</div>
+				</div>
+			{{ end }}
+		</div>
+
         <form action="/save" method="POST">
             <!-- ONU Section -->
             <div class="card">
@@ -310,5 +362,22 @@
             <button type="submit" class="btn-primary">Save Configuration & Restart Monitor</button>
         </form>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.local-time').forEach(el => {
+                const timeStr = el.getAttribute('data-time');
+                if (timeStr && timeStr !== "Never" && timeStr !== "") {
+                    const d = new Date(timeStr);
+                    if (!isNaN(d)) {
+                        el.textContent = d.toLocaleString(undefined, {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit'
+                        });
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>
