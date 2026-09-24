@@ -36,6 +36,11 @@ func main() {
 			log.Fatalf("[FATAL] Configuration file not found or unreadable: %v", err)
 		}
 		
+		if config.ONU.Password == "YOUR_ROUTER_PASSWORD" || config.ONU.Password == "" {
+			log.Println("[INFO] Setup incomplete. Please complete the Web UI setup to configure the router password.")
+			os.Exit(0) // Exit cleanly so systemd doesn't mark it as a failure loop
+		}
+		
 		stats, err := scraper.GetGPONStats(config)
 		if err != nil {
 			log.Printf("Failed to retrieve statistics: %v", err)
