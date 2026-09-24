@@ -158,15 +158,13 @@
             <p class="subtitle">Before we begin, please create a secure username and password to protect your configuration portal.</p>
         </header>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for category, message in messages %}
-                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+        {{ with .Messages }}
+            <div class="flash-messages">
+                {{ range . }}
+                    <div class="flash-message flash-{{ .Category }}">{{ .Message }}</div>
+                {{ end }}
+            </div>
+        {{ end }}
 
         <div class="card">
             <form action="/setup" method="POST">

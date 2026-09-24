@@ -213,15 +213,13 @@
             <p class="subtitle">Configure your GPON statistics scraper</p>
         </header>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for category, message in messages %}
-                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+        {{ with .Messages }}
+            <div class="flash-messages">
+                {{ range . }}
+                    <div class="flash-message flash-{{ .Category }}">{{ .Message }}</div>
+                {{ end }}
+            </div>
+        {{ end }}
 
         <form action="/save" method="POST">
             <!-- ONU Section -->
@@ -229,12 +227,12 @@
                 <h2>🌐 Router Credentials</h2>
                 <div class="form-group">
                     <label for="onu_ip">ONU IP Address</label>
-                    <input type="text" id="onu_ip" name="onu_ip" value="{{ config.get('ONU', 'IP', fallback='192.168.1.1') }}" required>
+                    <input type="text" id="onu_ip" name="onu_ip" value="{{ .Config.ONU.IP }}" required>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="onu_username">Web UI Username</label>
-                        <input type="text" id="onu_username" name="onu_username" value="{{ config.get('ONU', 'USERNAME', fallback='user') }}" required>
+                        <input type="text" id="onu_username" name="onu_username" value="{{ .Config.ONU.Username }}" required>
                     </div>
                     <div class="form-group">
                         <label for="onu_password">Web UI Password</label>
@@ -247,23 +245,23 @@
             <div class="card">
                 <h2>📡 MQTT (Home Assistant)</h2>
                 <div class="checkbox-group">
-                    <input type="checkbox" id="mqtt_enable" name="mqtt_enable" {% if config.getboolean('MQTT', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <input type="checkbox" id="mqtt_enable" name="mqtt_enable" {{ if .Config.MQTT.Enable }}checked{{ end }}>
                     <label for="mqtt_enable">Enable MQTT Publishing</label>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_broker">Broker IP / Hostname</label>
-                        <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.get('MQTT', 'BROKER', fallback='127.0.0.1') }}">
+                        <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ .Config.MQTT.Broker }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_port">Port</label>
-                        <input type="number" id="mqtt_port" name="mqtt_port" value="{{ config.get('MQTT', 'PORT', fallback='1883') }}">
+                        <input type="number" id="mqtt_port" name="mqtt_port" value="{{ .Config.MQTT.Port }}">
                     </div>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_user">Username (Optional)</label>
-                        <input type="text" id="mqtt_user" name="mqtt_user" value="{{ config.get('MQTT', 'USER', fallback='') }}">
+                        <input type="text" id="mqtt_user" name="mqtt_user" value="{{ .Config.MQTT.User }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_password">Password (Optional)</label>
@@ -273,11 +271,11 @@
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_topic">Base Topic</label>
-                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ config.get('MQTT', 'TOPIC', fallback='tele/onu/gpon_stats') }}">
+                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ .Config.MQTT.Topic }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_client_id">Client ID</label>
-                        <input type="text" id="mqtt_client_id" name="mqtt_client_id" value="{{ config.get('MQTT', 'CLIENT_ID', fallback='onu_monitor') }}">
+                        <input type="text" id="mqtt_client_id" name="mqtt_client_id" value="{{ .Config.MQTT.ClientID }}">
                     </div>
                 </div>
             </div>
@@ -286,12 +284,12 @@
             <div class="card">
                 <h2>📈 InfluxDB (Grafana)</h2>
                 <div class="checkbox-group">
-                    <input type="checkbox" id="influx_enable" name="influx_enable" {% if config.getboolean('INFLUXDB', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <input type="checkbox" id="influx_enable" name="influx_enable" {{ if .Config.INFLUXDB.Enable }}checked{{ end }}>
                     <label for="influx_enable">Enable InfluxDB Publishing</label>
                 </div>
                 <div class="form-group">
                     <label for="influx_url">Server URL</label>
-                    <input type="text" id="influx_url" name="influx_url" value="{{ config.get('INFLUXDB', 'URL', fallback='http://127.0.0.1:8086') }}">
+                    <input type="text" id="influx_url" name="influx_url" value="{{ .Config.INFLUXDB.URL }}">
                 </div>
                 <div class="form-group">
                     <label for="influx_token">API Token</label>
@@ -300,11 +298,11 @@
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="influx_org">Organization</label>
-                        <input type="text" id="influx_org" name="influx_org" value="{{ config.get('INFLUXDB', 'ORG', fallback='home') }}">
+                        <input type="text" id="influx_org" name="influx_org" value="{{ .Config.INFLUXDB.Org }}">
                     </div>
                     <div class="form-group">
                         <label for="influx_bucket">Bucket</label>
-                        <input type="text" id="influx_bucket" name="influx_bucket" value="{{ config.get('INFLUXDB', 'BUCKET', fallback='network_stats') }}">
+                        <input type="text" id="influx_bucket" name="influx_bucket" value="{{ .Config.INFLUXDB.Bucket }}">
                     </div>
                 </div>
             </div>
