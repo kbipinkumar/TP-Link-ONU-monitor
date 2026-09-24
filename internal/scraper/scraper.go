@@ -27,26 +27,26 @@ import (
 
 type Config struct {
 	ONU struct {
-		IP       string
-		Username string
-		Password string
-	}
+		IP       string `ini:"IP"`
+		Username string `ini:"USERNAME"`
+		Password string `ini:"PASSWORD"`
+	} `ini:"ONU"`
 	MQTT struct {
-		Enable   bool
-		Broker   string
-		Port     int
-		User     string
-		Password string
-		Topic    string
-		ClientID string
-	}
+		Enable   bool   `ini:"ENABLE"`
+		Broker   string `ini:"BROKER"`
+		Port     int    `ini:"PORT"`
+		User     string `ini:"USER"`
+		Password string `ini:"PASSWORD"`
+		Topic    string `ini:"TOPIC"`
+		ClientID string `ini:"CLIENT_ID"`
+	} `ini:"MQTT"`
 	INFLUXDB struct {
-		Enable bool
-		URL    string
-		Token  string
-		Org    string
-		Bucket string
-	}
+		Enable   bool   `ini:"ENABLE"`
+		URL      string `ini:"URL"`
+		Token    string `ini:"TOKEN"`
+		Org      string `ini:"ORG"`
+		Bucket   string `ini:"BUCKET"`
+	} `ini:"INFLUXDB"`
 }
 
 type GPONStats struct {
@@ -108,6 +108,8 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	log.Println("Fetching RSA keys from /cgi/getParm...")
 	req, _ := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi/getParm", nil)
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "*/*")
 	
 	resp, err := client.Do(req)
 	if err != nil {
@@ -160,16 +162,13 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	}
 
 	// 2. Login
-	loginURL := "http://" + cfg.ONU.IP + "/cgi/login"
-	data := url.Values{}
-	data.Set("UserName", hexUser)
-	data.Set("Passwd", hexPass)
-	data.Set("Action", "1")
-	data.Set("LoginStatus", "0")
+	loginURL := fmt.Sprintf("http://%s/cgi/login?UserName=%s&Passwd=%s&Action=1&LoginStatus=0", 
+		cfg.ONU.IP, url.QueryEscape(hexUser), url.QueryEscape(hexPass))
 	
-	req, _ = http.NewRequest("POST", loginURL, strings.NewReader(data.Encode()))
+	req, _ = http.NewRequest("POST", loginURL, strings.NewReader(""))
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "*/*")
 	
 	resp, err = client.Do(req)
 	if err != nil {
@@ -190,6 +189,8 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	// 3. Fetch root HTML to get TokenID
 	req, _ = http.NewRequest("GET", "http://"+cfg.ONU.IP+"/", nil)
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	resp, err = client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("root request failed: %w", err)
@@ -210,12 +211,24 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	}
 	tokenID := match[1]
 
+	// Setup robust defer to always log out and prevent 71233 session limit errors
+	defer func() {
+		logoutPayload := `{"operation":"cgi","oid":"/cgi/logout","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
+		logoutReq, _ := http.NewRequest("POST", "http://"+cfg.ONU.IP+"/cgi?9", bytes.NewBufferString(logoutPayload))
+		logoutReq.Header.Set("TokenID", tokenID)
+		logoutReq.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+		logoutReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		client.Do(logoutReq)
+		log.Println("Session logged out successfully.")
+	}()
+
 	// 4. Fetch GPON stats
 	statsURL := "http://" + cfg.ONU.IP + "/cgi?9"
 	payload := `{"operation":"gl","oid":"DEV2_OPTC_GPON_CFG","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
 	req, _ = http.NewRequest("POST", statsURL, bytes.NewBufferString(payload))
 	req.Header.Set("TokenID", tokenID)
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	
@@ -231,14 +244,6 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&statsResp); err != nil {
 		return nil, fmt.Errorf("failed to decode stats: %w", err)
 	}
-
-	// 5. Logout
-	logoutPayload := `{"operation":"cgi","oid":"/cgi/logout","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}` + "\r\n"
-	req, _ = http.NewRequest("POST", statsURL, bytes.NewBufferString(logoutPayload))
-	req.Header.Set("TokenID", tokenID)
-	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	client.Do(req)
 
 	if len(statsResp.Data) == 0 {
 		return nil, fmt.Errorf("no data found in GPON stats response")
