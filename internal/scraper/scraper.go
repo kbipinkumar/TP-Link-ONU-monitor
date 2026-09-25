@@ -332,13 +332,25 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 
 	gponData := statsResp.Data[0]
 	
-	parseFloat := func(v interface{}) float64 {
+	parseFloat := func(key string) (float64, error) {
+		v, ok := gponData[key]
+		if !ok {
+			return 0, nil // preserve existing behavior for absent fields
+		}
+		if v == nil {
+			return 0, fmt.Errorf("field %s is null", key)
+		}
 		switch i := v.(type) {
-		case float64: return i
+		case float64:
+			return i, nil
 		case string:
-			f, _ := strconv.ParseFloat(i, 64)
-			return f
-		default: return 0
+			f, err := strconv.ParseFloat(i, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid numeric string for %s: %w", key, err)
+			}
+			return f, nil
+		default:
+			return 0, fmt.Errorf("unsupported type for %s", key)
 		}
 	}
 	parseString := func(v interface{}) string {
@@ -348,9 +360,27 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		return "unknown"
 	}
 
-	rawRx := parseFloat(gponData["RXPower"])
-	rawTx := parseFloat(gponData["TXPower"])
-	
+	rawRx, err := parseFloat("RXPower")
+	if err != nil {
+		return nil, err
+	}
+	rawTx, err := parseFloat("TXPower")
+	if err != nil {
+		return nil, err
+	}
+	temp, err := parseFloat("transceiverTemperature")
+	if err != nil {
+		return nil, err
+	}
+	volt, err := parseFloat("supplyVottage")
+	if err != nil {
+		return nil, err
+	}
+	bias, err := parseFloat("biasCurrent")
+	if err != nil {
+		return nil, err
+	}
+
 	rxDbm := -40.0
 	if rawRx > 0 {
 		rxDbm = 10 * math.Log10(rawRx/10000.0)
@@ -363,10 +393,10 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	stats := &GPONStats{
 		RxPowerDBm:    math.Round(rxDbm*100) / 100,
 		TxPowerDBm:    math.Round(txDbm*100) / 100,
-		TemperatureC:  math.Round((parseFloat(gponData["transceiverTemperature"])/256.0)*100) / 100,
-		VoltageV:      math.Round((parseFloat(gponData["supplyVottage"])/1000.0)*1000) / 1000,
-		VoltageMV:     parseFloat(gponData["supplyVottage"]),
-		BiasCurrentMA: math.Round((parseFloat(gponData["biasCurrent"])*2/1000.0)*100) / 100,
+		TemperatureC:  math.Round((temp/256.0)*100) / 100,
+		VoltageV:      math.Round((volt/1000.0)*1000) / 1000,
+		VoltageMV:     volt,
+		BiasCurrentMA: math.Round((bias*2/1000.0)*100) / 100,
 		Status:        parseString(gponData["status"]),
 		PonType:       parseString(gponData["ponType"]),
 		XPonStatus:    parseString(gponData["xponStatus"]),
