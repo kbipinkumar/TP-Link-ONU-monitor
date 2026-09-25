@@ -20,14 +20,14 @@ Simply download the latest `.deb` release and install it via `apt`:
 ```bash
 sudo apt install ./tp-link-onu-monitor_*_$(dpkg --print-architecture).deb
 ```
-Once installed, open a browser and navigate to `http://<your-device-ip>:8991` to configure credentials and monitoring settings.
+Once installed, open a browser and navigate to `https://<your-device-ip>:8991` to configure credentials and monitoring settings. (Accept the self-signed certificate warning in your browser).
 
 ---
 
 ## 🛠️ Manual Deployment (From Source)
 
 ### 1. Clone the Repository and Compile
-Ensure Go is installed on your system (`sudo apt install golang` or from golang.org).
+Ensure Go 1.23 or newer is installed on your system. If your distribution's package manager provides an older version, please install the official distribution from [go.dev/dl](https://go.dev/dl/).
 
 ```bash
 git clone https://github.com/kbipinkumar/TP-Link-ONU-monitor.git
@@ -63,7 +63,7 @@ Alternatively, launch the Web GUI to configure everything from your browser:
 ```bash
 ./onu-monitor web
 ```
-*(Once running, navigate to `http://<your-device-ip>:8991` in a browser).*
+*(Once running, navigate to `https://<your-device-ip>:8991` in a browser. Accept the self-signed certificate warning).*
 
 **Method C: Import from Backup**
 If you have an existing or backed-up `.ini` configuration file, you can import it directly:

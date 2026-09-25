@@ -1,13 +1,21 @@
 #!/bin/bash
 set -e
 
-# Get version from git tag, fallback to 1.0.0
-VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0")
-# Remove leading 'v' if present
-VERSION=${VERSION#v}
+CONTROL_VERSION=$(grep "^Version:" debian/control | awk '{print $2}')
+EXACT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+
+if [ -n "$EXACT_TAG" ]; then
+    VERSION=${EXACT_TAG#v}
+elif [ -n "$CONTROL_VERSION" ]; then
+    VERSION=$CONTROL_VERSION
+else
+    echo "Error: No exact git tag and no version found in debian/control."
+    exit 1
+fi
+
 echo "Detected version: $VERSION"
 
-ARCHITECTURES=("amd64" "arm64")
+ARCHITECTURES=("amd64" "arm64" "armhf")
 
 for ARCH in "${ARCHITECTURES[@]}"; do
     echo "==================================================="
@@ -35,9 +43,16 @@ for ARCH in "${ARCHITECTURES[@]}"; do
     chmod 755 "$BUILD_DIR/DEBIAN/postinst"
     chmod 755 "$BUILD_DIR/DEBIAN/prerm"
 
+    export GOARCH_ENV=$ARCH
+    export GOARM_ENV=""
+    if [ "$ARCH" = "armhf" ]; then
+        export GOARCH_ENV="arm"
+        export GOARM_ENV="7"
+    fi
+
     # Compile the Go binary (optimized for low RAM environments like Raspberry Pi)
     echo "Compiling Go binary for $ARCH..."
-    env CGO_ENABLED=0 GOMEMLIMIT=512MiB GOGC=50 GOOS=linux GOARCH=$ARCH go build -p 1 -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
+    env CGO_ENABLED=0 GOMEMLIMIT=512MiB GOGC=50 GOOS=linux GOARCH=$GOARCH_ENV GOARM=$GOARM_ENV go build -p 1 -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
 
     # Copy resources
     cp onu_config.example.ini "$BUILD_DIR/opt/onu_monitor/"

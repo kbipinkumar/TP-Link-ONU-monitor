@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/charmbracelet/huh"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
@@ -32,14 +33,11 @@ func RunInteractiveSetup(configPath string) {
 	}
 
 	// Load existing values as defaults
-	config, _ := scraper.LoadConfig(configPath)
-	if config.ONU.IP == "" {
+	config, err := scraper.LoadConfig(configPath)
+	if err != nil {
+		config = &scraper.Config{}
 		config.ONU.IP = "192.168.1.1"
-	}
-	if config.ONU.Username == "" {
 		config.ONU.Username = "user"
-	}
-	if config.MQTT.Port == 0 {
 		config.MQTT.Port = 1883
 	}
 
@@ -72,7 +70,13 @@ func RunInteractiveSetup(configPath string) {
 		),
 		huh.NewGroup(
 			huh.NewInput().Title("MQTT Broker (IP/Hostname)").Value(&mqttBroker).Placeholder(config.MQTT.Broker),
-			huh.NewInput().Title("MQTT Port").Value(&mqttPortStr).Placeholder(mqttPortStr),
+			huh.NewInput().Title("MQTT Port").Value(&mqttPortStr).Placeholder(mqttPortStr).Validate(func(s string) error {
+				port, err := strconv.Atoi(s)
+				if err != nil || port < 1 || port > 65535 {
+					return fmt.Errorf("port must be an integer between 1 and 65535")
+				}
+				return nil
+			}),
 			huh.NewInput().Title("MQTT Base Topic").Value(&mqttTopic).Placeholder(config.MQTT.Topic),
 			huh.NewInput().Title("MQTT Client ID").Value(&mqttClientID).Placeholder(config.MQTT.ClientID),
 			huh.NewInput().Title("MQTT Username (Optional)").Value(&mqttUser).Placeholder(config.MQTT.User),
@@ -96,11 +100,23 @@ func RunInteractiveSetup(configPath string) {
 	}
 
 	// Update WebUI
+	existingWebUIUser := cfg.Section("WEBUI").Key("USERNAME").String()
+	
 	if webUIUser != "" {
 		cfg.Section("WEBUI").Key("USERNAME").SetValue(webUIUser)
 	}
+
+	finalWebUIUser := webUIUser
+	if finalWebUIUser == "" {
+		finalWebUIUser = existingWebUIUser
+	}
+
 	if webUIPass != "" {
-		cfg.Section("WEBUI").Key("PASSWORD").SetValue(webUIPass)
+		if finalWebUIUser == "" {
+			fmt.Println("Warning: Cannot set a Web UI password without a username. Password change ignored.")
+		} else {
+			cfg.Section("WEBUI").Key("PASSWORD").SetValue(webUIPass)
+		}
 	}
 
 	// Update ONU

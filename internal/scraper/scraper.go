@@ -393,7 +393,10 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 	defer client.Disconnect(250)
 
 	baseTopic := "homeassistant/sensor/onu_monitor"
-	stateTopic := baseTopic + "/state"
+	stateTopic := cfg.MQTT.Topic
+	if stateTopic == "" {
+		stateTopic = baseTopic + "/state"
+	}
 
 	sensors := map[string]map[string]string{
 		"rx_power":     {"name": "ONU RX Power", "unit": "dBm", "class": "signal_strength", "val": "rx_power_dbm"},

@@ -1,9 +1,16 @@
 package web
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/subtle"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"embed"
+	"encoding/pem"
 	"html/template"
+	"math/big"
 	"log"
 	"net/http"
 	"net/url"
@@ -81,6 +88,58 @@ func ensureConfig() error {
 			return err
 		}
 		file.Close()
+	}
+	return nil
+}
+
+func ensureTLSCert(certPath, keyPath string) error {
+	if _, err := os.Stat(certPath); err == nil {
+		if _, err := os.Stat(keyPath); err == nil {
+			return nil // Certs exist
+		}
+	}
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+	certTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"ONU Monitor"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+	certOut, err := os.Create(certPath)
+	if err != nil {
+		return err
+	}
+	defer certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return err
+	}
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer keyOut.Close()
+	privBytes, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		return err
+	}
+	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -345,8 +404,14 @@ func StartServer(port string) {
 		IdleTimeout:  30 * time.Second,
 	}
 
-	log.Printf("Starting Web GUI on port %s", port)
-	if err := srv.ListenAndServe(); err != nil {
+	certPath := filepath.Join(filepath.Dir(configPath), "cert.pem")
+	keyPath := filepath.Join(filepath.Dir(configPath), "key.pem")
+	if err := ensureTLSCert(certPath, keyPath); err != nil {
+		log.Fatalf("Failed to generate TLS certs: %v", err)
+	}
+
+	log.Printf("Starting secure Web GUI on https://0.0.0.0:%s", port)
+	if err := srv.ListenAndServeTLS(certPath, keyPath); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
