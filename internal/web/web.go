@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -419,23 +420,22 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 		setFlash(w, "warning", "Failed to save config: "+err.Error())
 	} else {
 		// Attempt to restart service with a bounded wait
-		done := make(chan error, 1)
-		go func() {
-			cmd := exec.Command("sudo", "/bin/systemctl", "restart", "onu_monitor.timer")
-			done <- cmd.Run()
-		}()
-
-		select {
-		case err := <-done:
-			if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, "sudo", "/bin/systemctl", "restart", "onu_monitor.timer")
+		err := cmd.Run()
+		
+		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				log.Printf("Restarting onu_monitor.timer is taking longer than expected; continuing in background.")
+				setFlash(w, "success", "Configuration saved. Monitor timer restart requested but not confirmed.")
+			} else {
 				log.Printf("Failed to restart onu_monitor.timer: %v", err)
 				setFlash(w, "warning", "Configuration saved, but failed to restart monitor timer: "+err.Error())
-			} else {
-				setFlash(w, "success", "Configuration saved and monitor timer restarted successfully!")
 			}
-		case <-time.After(2 * time.Second):
-			log.Printf("Restarting onu_monitor.timer is taking longer than expected; continuing in background.")
-			setFlash(w, "success", "Configuration saved. Monitor timer restart requested but not confirmed.")
+		} else {
+			setFlash(w, "success", "Configuration saved and monitor timer restarted successfully!")
 		}
 	}
 
