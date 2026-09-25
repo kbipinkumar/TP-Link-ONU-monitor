@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -513,6 +514,30 @@ func StartServer(port string) {
 	if err := ensureTLSCert(certPath, keyPath); err != nil {
 		log.Fatalf("Failed to generate TLS certs: %v", err)
 	}
+
+	// Start HTTP redirect server on port-1
+	httpPort := 8990
+	if p, err := strconv.Atoi(port); err == nil {
+		httpPort = p - 1
+	}
+	
+	go func() {
+		redirectSrv := &http.Server{
+			Addr: ":" + strconv.Itoa(httpPort),
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				host := r.Host
+				if index := strings.IndexByte(host, ':'); index != -1 {
+					host = host[:index]
+				}
+				target := "https://" + host + ":" + port + r.RequestURI
+				http.Redirect(w, r, target, http.StatusMovedPermanently)
+			}),
+		}
+		log.Printf("Starting HTTP-to-HTTPS redirect server on http://0.0.0.0:%d", httpPort)
+		if err := redirectSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("HTTP Redirect server failed: %v", err)
+		}
+	}()
 
 	log.Printf("Starting secure Web GUI on https://0.0.0.0:%s", port)
 	if err := srv.ListenAndServeTLS(certPath, keyPath); err != nil {
