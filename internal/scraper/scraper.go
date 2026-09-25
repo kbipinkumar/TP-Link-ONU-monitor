@@ -348,6 +348,9 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 			if err != nil {
 				return 0, fmt.Errorf("invalid numeric string for %s: %w", key, err)
 			}
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				return 0, fmt.Errorf("invalid numeric value for %s: NaN or Infinity", key)
+			}
 			return f, nil
 		default:
 			return 0, fmt.Errorf("unsupported type for %s", key)
