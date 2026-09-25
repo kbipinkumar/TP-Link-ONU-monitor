@@ -168,14 +168,7 @@ func ensureTLSCert(certPath, keyPath string) error {
 	return nil
 }
 
-func checkAuth(r *http.Request) bool {
-	cfg, err := ini.Load(configPath)
-	if err != nil {
-		return false
-	}
-	user := cfg.Section("WEBUI").Key("USERNAME").String()
-	pass := cfg.Section("WEBUI").Key("PASSWORD").String()
-
+func checkAuth(r *http.Request, user, pass string) bool {
 	if user == "" || pass == "" {
 		return false
 	}
@@ -200,6 +193,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		user := cfg.Section("WEBUI").Key("USERNAME").String()
 		pass := cfg.Section("WEBUI").Key("PASSWORD").String()
 
 		if pass == "" {
@@ -207,7 +201,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if !checkAuth(r) {
+		if !checkAuth(r, user, pass) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -408,13 +402,14 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	if err := cfg.SaveTo(configPath); err != nil {
 		setFlash(w, "warning", "Failed to save config: "+err.Error())
 	} else {
-		// Restart service
-		cmd := exec.Command("sudo", "/bin/systemctl", "restart", "onu_monitor.timer")
-		if err := cmd.Run(); err != nil {
-			setFlash(w, "warning", "Saved config, but failed to restart service: "+err.Error())
-		} else {
-			setFlash(w, "success", "Configuration saved and monitor timer restarted successfully!")
-		}
+		// Restart service asynchronously to prevent blocking the web request
+		go func() {
+			cmd := exec.Command("sudo", "/bin/systemctl", "restart", "onu_monitor.timer")
+			if err := cmd.Run(); err != nil {
+				log.Printf("Failed to restart onu_monitor.timer: %v", err)
+			}
+		}()
+		setFlash(w, "success", "Configuration saved and monitor timer is restarting.")
 	}
 
 	http.Redirect(w, r, "/", http.StatusFound)

@@ -65,6 +65,17 @@ type GPONStats struct {
 	RawTxPower    interface{} `json:"raw_tx_power"`
 }
 
+var tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
+
+func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+}
+
 type SystemStatus struct {
 	LastScrapeTime   string     `json:"last_scrape_time"`
 	LastMqttTime     string     `json:"last_mqtt_time"`
@@ -144,13 +155,11 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "*/*")
 	
-	resp, err := client.Do(req)
+	bodyBytes, err := doRequest(client, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch keys: %w", err)
 	}
-	defer resp.Body.Close()
 	
-	bodyBytes, _ := io.ReadAll(resp.Body)
 	text := string(bodyBytes)
 	
 	var nHex, eHex string
@@ -206,13 +215,11 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "*/*")
 	
-	resp, err = client.Do(req)
+	bodyBytes, err = doRequest(client, req)
 	if err != nil {
 		return nil, fmt.Errorf("login request failed: %w", err)
 	}
-	defer resp.Body.Close()
 	
-	bodyBytes, _ = io.ReadAll(resp.Body)
 	respText := string(bodyBytes)
 	
 	if !strings.Contains(respText, "$.ret=0;") {
@@ -233,11 +240,8 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 				req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 				req.Header.Set("User-Agent", "Mozilla/5.0")
 				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-				if resp, err := client.Do(req); err == nil {
-					bodyBytes, _ := io.ReadAll(resp.Body)
-					resp.Body.Close()
-					re := regexp.MustCompile(`var token="([^"]+)";`)
-					match := re.FindStringSubmatch(string(bodyBytes))
+				if bodyBytes, err := doRequest(client, req); err == nil {
+					match := tokenRegex.FindStringSubmatch(string(bodyBytes))
 					if len(match) >= 2 {
 						tokenID = match[1]
 					}
@@ -255,13 +259,11 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 			logoutReq.Header.Set("TokenID", tokenID)
 			logoutReq.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 			logoutReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-			resp, err := client.Do(logoutReq)
+			bodyBytes, err := doRequest(client, logoutReq)
 			if err != nil {
 				log.Printf("Logout request failed: %v", err)
 				return
 			}
-			defer resp.Body.Close()
-			bodyBytes, _ := io.ReadAll(resp.Body)
 			if strings.Contains(string(bodyBytes), "$.ret=0;") {
 				log.Println("Session logged out successfully.")
 			} else {
@@ -280,15 +282,13 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	resp, err = client.Do(req)
+	
+	bodyBytes, err = doRequest(client, req)
 	if err != nil {
 		return nil, fmt.Errorf("root request failed: %w", err)
 	}
-	defer resp.Body.Close()
-	bodyBytes, _ = io.ReadAll(resp.Body)
 	
-	re := regexp.MustCompile(`var token="([^"]+)";`)
-	match := re.FindStringSubmatch(string(bodyBytes))
+	match := tokenRegex.FindStringSubmatch(string(bodyBytes))
 	if len(match) < 2 {
 		log.Printf("ERROR: Could not find var token. Login Response was: %s", respText)
 		snippet := string(bodyBytes)
@@ -313,7 +313,7 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	
-	resp, err = client.Do(req)
+	resp, err := client.Do(req) // We can't use doRequest here because we decode directly from the body stream
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch gpon stats: %w", err)
 	}
@@ -322,7 +322,9 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	var statsResp struct {
 		Data []map[string]interface{} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&statsResp); err != nil {
+	
+	// Apply LimitReader here as well to protect against large json responses
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&statsResp); err != nil {
 		return nil, fmt.Errorf("failed to decode stats: %w", err)
 	}
 
