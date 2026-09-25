@@ -283,6 +283,22 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// CSRF / Same-Origin validation
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = r.Header.Get("Referer")
+	}
+	if origin == "" {
+		http.Error(w, "Forbidden: Missing Origin/Referer header", http.StatusForbidden)
+		return
+	}
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Host != r.Host {
+		http.Error(w, "Forbidden: Cross-Origin Request", http.StatusForbidden)
+		return
+	}
+
 	r.ParseForm()
 	
 	ip := r.FormValue("onu_ip")
@@ -402,14 +418,25 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	if err := cfg.SaveTo(configPath); err != nil {
 		setFlash(w, "warning", "Failed to save config: "+err.Error())
 	} else {
-		// Restart service asynchronously to prevent blocking the web request
+		// Attempt to restart service with a bounded wait
+		done := make(chan error, 1)
 		go func() {
 			cmd := exec.Command("sudo", "/bin/systemctl", "restart", "onu_monitor.timer")
-			if err := cmd.Run(); err != nil {
-				log.Printf("Failed to restart onu_monitor.timer: %v", err)
-			}
+			done <- cmd.Run()
 		}()
-		setFlash(w, "success", "Configuration saved and monitor timer is restarting.")
+
+		select {
+		case err := <-done:
+			if err != nil {
+				log.Printf("Failed to restart onu_monitor.timer: %v", err)
+				setFlash(w, "warning", "Configuration saved, but failed to restart monitor timer: "+err.Error())
+			} else {
+				setFlash(w, "success", "Configuration saved and monitor timer restarted successfully!")
+			}
+		case <-time.After(2 * time.Second):
+			log.Printf("Restarting onu_monitor.timer is taking longer than expected; continuing in background.")
+			setFlash(w, "success", "Configuration saved. Monitor timer restart requested but not confirmed.")
+		}
 	}
 
 	http.Redirect(w, r, "/", http.StatusFound)
