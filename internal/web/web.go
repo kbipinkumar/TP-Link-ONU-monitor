@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"math/big"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -106,11 +107,33 @@ func ensureTLSCert(certPath, keyPath string) error {
 	if err != nil {
 		return err
 	}
+	var ips []net.IP
+	ips = append(ips, net.ParseIP("127.0.0.1"), net.ParseIP("::1"))
+	
+	ifaces, _ := net.Interfaces()
+	for _, i := range ifaces {
+		addrs, _ := i.Addrs()
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip != nil {
+				ips = append(ips, ip)
+			}
+		}
+	}
+
 	certTemplate := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			Organization: []string{"ONU Monitor"},
 		},
+		IPAddresses:           ips,
+		DNSNames:              []string{"localhost"},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,

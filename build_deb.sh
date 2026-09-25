@@ -47,7 +47,7 @@ for ARCH in "${ARCHITECTURES[@]}"; do
     export GOARM_ENV=""
     if [ "$ARCH" = "armhf" ]; then
         export GOARCH_ENV="arm"
-        export GOARM_ENV="7"
+        export GOARM_ENV="6"
     fi
 
     # Compile the Go binary (optimized for low RAM environments like Raspberry Pi)

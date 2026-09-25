@@ -40,6 +40,9 @@ func RunInteractiveSetup(configPath string) {
 		config.ONU.Username = "user"
 		config.MQTT.Port = 1883
 	}
+	if config.MQTT.Port <= 0 || config.MQTT.Port > 65535 {
+		config.MQTT.Port = 1883
+	}
 
 	var webUIUser, webUIPass string
 	var onuIP, onuUser, onuPass string
@@ -137,10 +140,12 @@ func RunInteractiveSetup(configPath string) {
 	}
 
 	// Update MQTT
+	if mqttPortStr != "" {
+		cfg.Section("MQTT").Key("PORT").SetValue(mqttPortStr)
+	}
 	if enableMQTT {
 		cfg.Section("MQTT").Key("ENABLE").SetValue("True")
 		if mqttBroker != "" { cfg.Section("MQTT").Key("BROKER").SetValue(mqttBroker) }
-		if mqttPortStr != "" { cfg.Section("MQTT").Key("PORT").SetValue(mqttPortStr) }
 		if mqttTopic != "" { cfg.Section("MQTT").Key("TOPIC").SetValue(mqttTopic) }
 		if mqttClientID != "" { cfg.Section("MQTT").Key("CLIENT_ID").SetValue(mqttClientID) }
 		if mqttUser != "" { cfg.Section("MQTT").Key("USER").SetValue(mqttUser) }
