@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"embed"
+	"encoding/json"
 	"encoding/pem"
 	"html/template"
 	"math/big"
@@ -283,6 +284,45 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.ParseForm()
+	
+	ip := r.FormValue("onu_ip")
+	user := r.FormValue("onu_username")
+	pass := r.FormValue("onu_password")
+	
+	if pass == "" {
+		cfg, err := ini.Load(configPath)
+		if err == nil {
+			pass = cfg.Section("ONU").Key("PASSWORD").String()
+		}
+	}
+	
+	testCfg := &scraper.Config{}
+	testCfg.ONU.IP = ip
+	testCfg.ONU.Username = user
+	testCfg.ONU.Password = pass
+	
+	stats, err := scraper.GetGPONStats(testCfg)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"stats":   stats,
+	})
+}
+
 func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -313,8 +353,26 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ONU
-	cfg.Section("ONU").Key("IP").SetValue(r.FormValue("onu_ip"))
-	cfg.Section("ONU").Key("USERNAME").SetValue(r.FormValue("onu_username"))
+	onuIP := r.FormValue("onu_ip")
+	onuUsername := r.FormValue("onu_username")
+	onuPassword := r.FormValue("onu_password")
+	if onuPassword == "" {
+		onuPassword = cfg.Section("ONU").Key("PASSWORD").String()
+	}
+
+	testCfg := &scraper.Config{}
+	testCfg.ONU.IP = onuIP
+	testCfg.ONU.Username = onuUsername
+	testCfg.ONU.Password = onuPassword
+
+	if _, err := scraper.GetGPONStats(testCfg); err != nil {
+		setFlash(w, "warning", "Test connection failed: " + err.Error() + ". Configuration NOT saved.")
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	cfg.Section("ONU").Key("IP").SetValue(onuIP)
+	cfg.Section("ONU").Key("USERNAME").SetValue(onuUsername)
 	if p := r.FormValue("onu_password"); p != "" {
 		cfg.Section("ONU").Key("PASSWORD").SetValue(p)
 	}
@@ -417,6 +475,7 @@ func StartServer(port string) {
 	http.HandleFunc("/setup", SetupHandler)
 	http.HandleFunc("/", authMiddleware(IndexHandler))
 	http.HandleFunc("/save", authMiddleware(SaveHandler))
+	http.HandleFunc("/test-connection", authMiddleware(TestConnectionHandler))
 	http.HandleFunc("/update-webui", authMiddleware(UpdateWebUIHandler))
 	
 	srv := &http.Server{

@@ -375,13 +375,41 @@
                     </div>
                 </div>
             </div>
-
-            <button type="submit" class="btn-primary">Save Configuration & Restart Monitor</button>
+            <div style="display: flex; gap: 15px;">
+                <button type="submit" class="btn-primary" style="flex: 2;">Save Configuration & Restart Monitor</button>
+                <button type="button" id="btn-test" style="flex: 1; padding: 14px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.6); color: var(--text-primary); transition: all 0.2s ease; font-family: 'Inter', sans-serif;">Test Connection</button>
+            </div>
         </form>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('btn-test').addEventListener('click', async () => {
+                const btn = document.getElementById('btn-test');
+                const originalText = btn.textContent;
+                btn.textContent = "Testing...";
+                btn.disabled = true;
+
+                const formData = new FormData(document.getElementById('config-form'));
+                try {
+                    const response = await fetch('/test-connection', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert("Success! Connected to ONU.\nRX Power: " + result.stats.rx_power_dbm + " dBm\nTX Power: " + result.stats.tx_power_dbm + " dBm\nTemperature: " + result.stats.temperature_c + " °C");
+                    } else {
+                        alert("Connection Test Failed:\n" + result.error);
+                    }
+                } catch (err) {
+                    alert("Error making request: " + err);
+                } finally {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            });
+
             document.querySelectorAll('.local-time').forEach(el => {
                 const timeStr = el.getAttribute('data-time');
                 if (timeStr && timeStr !== "Never" && timeStr !== "") {

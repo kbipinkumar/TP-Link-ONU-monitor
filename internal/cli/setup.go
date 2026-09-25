@@ -165,6 +165,32 @@ func RunInteractiveSetup(configPath string) {
 		cfg.Section("INFLUXDB").Key("ENABLE").SetValue("False")
 	}
 
+	fmt.Println("\nTesting connection to ONU...")
+	
+	testCfg := &scraper.Config{}
+	testCfg.ONU.IP = onuIP
+	if testCfg.ONU.IP == "" {
+		testCfg.ONU.IP = config.ONU.IP
+	}
+	testCfg.ONU.Username = onuUser
+	if testCfg.ONU.Username == "" {
+		testCfg.ONU.Username = config.ONU.Username
+	}
+	testCfg.ONU.Password = onuPass
+	if testCfg.ONU.Password == "" {
+		testCfg.ONU.Password = cfg.Section("ONU").Key("PASSWORD").String()
+	}
+
+	stats, err := scraper.GetGPONStats(testCfg)
+	if err != nil {
+		fmt.Printf("❌ Connection Test Failed: %v\n", err)
+		fmt.Println("Configuration NOT saved. Please run 'onu-monitor setup' again with correct credentials.")
+		os.Exit(1)
+	}
+
+	fmt.Println("✅ Success! Connected to ONU.")
+	fmt.Printf("📊 RX Power: %.2f dBm | TX Power: %.2f dBm | Temp: %.2f °C\n\n", stats.RxPowerDBm, stats.TxPowerDBm, stats.TemperatureC)
+
 	if err := cfg.SaveTo(configPath); err != nil {
 		log.Fatalf("Failed to save config: %v", err)
 	}
