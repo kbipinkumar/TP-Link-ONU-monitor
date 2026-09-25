@@ -14,9 +14,11 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+var Version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import>")
+		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import|version>")
 		os.Exit(1)
 	}
 
@@ -125,9 +127,11 @@ func main() {
 		}
 		fmt.Println("Web UI credentials have been successfully reset.")
 		fmt.Println("Please navigate to the Web UI to set up a new username and password.")
+	case "version":
+		fmt.Printf("onu-monitor version %s\n", Version)
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import>")
+		fmt.Println("Usage: onu-monitor <setup|web|scrape|reset-password|import|version>")
 		os.Exit(1)
 	}
 }

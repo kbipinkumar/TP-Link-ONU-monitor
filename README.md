@@ -32,7 +32,7 @@ Ensure Go 1.23 or newer is installed on your system. If your distribution's pack
 ```bash
 git clone https://github.com/kbipinkumar/TP-Link-ONU-monitor.git
 cd TP-Link-ONU-monitor
-go build -ldflags="-s -w" -o onu-monitor ./cmd/onu-monitor
+go build -ldflags="-s -w -X main.Version=$(git describe --tags --always --dirty)" -o onu-monitor ./cmd/onu-monitor
 ```
 
 ### 2. Configure the Script

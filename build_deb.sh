@@ -52,7 +52,7 @@ for ARCH in "${ARCHITECTURES[@]}"; do
 
     # Compile the Go binary (optimized for low RAM environments like Raspberry Pi)
     echo "Compiling Go binary for $ARCH..."
-    env CGO_ENABLED=0 GOMEMLIMIT=512MiB GOGC=50 GOOS=linux GOARCH=$GOARCH_ENV GOARM=$GOARM_ENV go build -p 1 -ldflags="-s -w" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
+    env CGO_ENABLED=0 GOMEMLIMIT=512MiB GOGC=50 GOOS=linux GOARCH=$GOARCH_ENV GOARM=$GOARM_ENV go build -p 1 -ldflags="-s -w -X main.Version=${VERSION}" -o "$BUILD_DIR/opt/onu_monitor/onu-monitor" ./cmd/onu-monitor
 
     # Copy resources
     cp onu_config.example.ini "$BUILD_DIR/opt/onu_monitor/"
