@@ -63,6 +63,11 @@ type GPONStats struct {
 	XPonStatus    string      `json:"xpon_status"`
 	RawRxPower    interface{} `json:"raw_rx_power"`
 	RawTxPower    interface{} `json:"raw_tx_power"`
+	CPUUsage      float64     `json:"cpu_usage"`
+	MemUsage      float64     `json:"mem_usage"`
+	Uptime        float64     `json:"uptime"`
+	ModelName     string      `json:"model_name"`
+	SerialNumber  string      `json:"serial_number"`
 }
 
 var tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
@@ -408,6 +413,54 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		RawRxPower:    gponData["RXPower"],
 		RawTxPower:    gponData["TXPower"],
 	}
+
+	fetchOID := func(payload string) (map[string]interface{}, error) {
+		req, err := http.NewRequest("POST", statsURL, bytes.NewBufferString(payload+"\r\n"))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("TokenID", tokenID)
+		req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		var res struct {
+			Data map[string]interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
+			return nil, err
+		}
+		return res.Data, nil
+	}
+
+	if devInfo, err := fetchOID(`{"operation":"go","oid":"DEV2_DEV_INFO","data":{"hardwareVersion":"","softwareVersion":"","serialNumber":"","modelName":"","upTime":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		stats.ModelName = parseString(devInfo["modelName"])
+		stats.SerialNumber = parseString(devInfo["serialNumber"])
+		if val, err := strconv.ParseFloat(parseString(devInfo["upTime"]), 64); err == nil {
+			stats.Uptime = val
+		}
+	}
+
+	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		if val, err := strconv.ParseFloat(parseString(procStatus["CPUUsage"]), 64); err == nil {
+			stats.CPUUsage = val
+		}
+	}
+
+	if memStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_MEM_STATUS","data":{"total":"","free":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		total, _ := strconv.ParseFloat(parseString(memStatus["total"]), 64)
+		free, _ := strconv.ParseFloat(parseString(memStatus["free"]), 64)
+		if total > 0 {
+			stats.MemUsage = math.Round(((total-free)/total)*10000) / 100
+		}
+	}
 	
 	return stats, nil
 }
@@ -433,28 +486,61 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		stateTopic = baseTopic + "/state"
 	}
 
-	sensors := map[string]map[string]string{
-		"rx_power":     {"name": "ONU RX Power", "unit": "dBm", "class": "signal_strength", "val": "rx_power_dbm"},
-		"tx_power":     {"name": "ONU TX Power", "unit": "dBm", "class": "signal_strength", "val": "tx_power_dbm"},
-		"temperature":  {"name": "ONU Temperature", "unit": "°C", "class": "temperature", "val": "temperature_c"},
-		"voltage":      {"name": "ONU Supply Voltage", "unit": "mV", "class": "voltage", "val": "voltage_mv"},
-		"bias_current": {"name": "ONU Bias Current", "unit": "mA", "class": "current", "val": "bias_current_ma"},
+	type sensorConfig struct {
+		Name     string
+		Unit     string
+		Class    string
+		Val      string
+		Category string
 	}
+
+	sensors := map[string]sensorConfig{
+		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", ""},
+		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", ""},
+		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", ""},
+		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", ""},
+		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", ""},
+		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", ""},
+		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", ""},
+		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic"},
+		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic"},
+		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic"},
+		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic"},
+		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic"},
+	}
+
+	identifiers := []string{"tp_link_xz000_g7"}
+	if stats.SerialNumber != "" {
+		identifiers = append(identifiers, stats.SerialNumber)
+	}
+	model := "XZ000-G7"
+	if stats.ModelName != "" {
+		model = stats.ModelName
+	}
+	deviceName := "TP-Link " + model
 
 	for key, info := range sensors {
 		configTopic := fmt.Sprintf("%s/%s/config", baseTopic, key)
 		configPayload := map[string]interface{}{
-			"name":                info["name"],
+			"name":                info.Name,
 			"state_topic":         stateTopic,
-			"unit_of_measurement": info["unit"],
-			"device_class":        info["class"],
-			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info["val"]),
+			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info.Val),
 			"unique_id":           fmt.Sprintf("tp_link_onu_%s", key),
 			"device": map[string]interface{}{
-				"identifiers":  []string{"tp_link_xz000_g7"},
-				"name":         "TP-Link XZ000-G7 ONU",
+				"identifiers":  identifiers,
+				"name":         deviceName,
 				"manufacturer": "TP-Link",
+				"model":        model,
 			},
+		}
+		if info.Unit != "" {
+			configPayload["unit_of_measurement"] = info.Unit
+		}
+		if info.Class != "" {
+			configPayload["device_class"] = info.Class
+		}
+		if info.Category != "" {
+			configPayload["entity_category"] = info.Category
 		}
 		payloadBytes, _ := json.Marshal(configPayload)
 		if token := client.Publish(configTopic, 0, true, payloadBytes); token.WaitTimeout(5*time.Second) {
