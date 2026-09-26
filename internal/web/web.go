@@ -523,11 +523,13 @@ func StartServer(port string) {
 	
 	go func() {
 		redirectSrv := &http.Server{
-			Addr: ":" + strconv.Itoa(httpPort),
+			Addr:              ":" + strconv.Itoa(httpPort),
+			ReadHeaderTimeout: srv.ReadTimeout,
+			IdleTimeout:       srv.IdleTimeout,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				host := r.Host
-				if index := strings.IndexByte(host, ':'); index != -1 {
-					host = host[:index]
+				host, _, err := net.SplitHostPort(r.Host)
+				if err != nil {
+					host = r.Host
 				}
 				target := "https://" + host + ":" + port + r.RequestURI
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
