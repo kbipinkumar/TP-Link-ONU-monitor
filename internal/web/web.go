@@ -531,7 +531,7 @@ func StartServer(port string) {
 				if err != nil {
 					host = r.Host
 				}
-				target := "https://" + host + ":" + port + r.RequestURI
+				target := "https://" + net.JoinHostPort(host, port) + r.RequestURI
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			}),
 		}
