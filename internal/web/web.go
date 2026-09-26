@@ -530,6 +530,9 @@ func StartServer(port string) {
 				host, _, err := net.SplitHostPort(r.Host)
 				if err != nil {
 					host = r.Host
+					if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+						host = host[1 : len(host)-1]
+					}
 				}
 				target := "https://" + net.JoinHostPort(host, port) + r.RequestURI
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
