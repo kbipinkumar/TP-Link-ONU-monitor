@@ -4,3 +4,5 @@ __pycache__/
 onu_config.ini
 packaging/
 *.deb
+*.bin
+*.env
