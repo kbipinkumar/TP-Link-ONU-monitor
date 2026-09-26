@@ -17,7 +17,15 @@ jobs:
         with:
           fetch-depth: 0 # Required so git describe --tags works in build_deb.sh
 
-      - name: Build Debian Package
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.0'
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Build Debian Packages (amd64, arm64)
         run: |
           chmod +x build_deb.sh
           ./build_deb.sh
@@ -28,8 +36,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create Release and Upload Asset
+      - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: tp-link-onu-monitor_${{ steps.get_version.outputs.version }}_all.deb
+          files: tp-link-onu-monitor_${{ steps.get_version.outputs.version }}_*.deb
           generate_release_notes: true

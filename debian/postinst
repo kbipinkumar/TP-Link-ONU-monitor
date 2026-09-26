@@ -33,7 +33,7 @@ echo " TP-Link GPON ONU Monitor installed successfully!               "
 echo " Please configure your credentials and MQTT/InfluxDB settings   "
 echo " by accessing the Web GUI at:                                   "
 echo "                                                                "
-echo "          http://<your-device-ip>:8991                          "
+echo "          https://<your-device-ip>:8991                          "
 echo "                                                                "
 echo "================================================================"
 

@@ -15,10 +15,10 @@ This project scrapes optical statistics (RX/TX Power, Temperature, Voltage, Bias
 - **Error 71233 (Session Lockout)**: If the script fails with `$.ret=71233;`, do not assume the password is wrong! This is a TP-Link security feature meaning the session limit is reached (e.g. the user has a browser tab open), or a temporary 5-minute brute-force lockout is active. Close browser tabs and wait 5 minutes before retrying.
 
 ## Configuration
-- The codebase reads configuration from `onu_config.ini` using Python's `configparser`. 
-- NEVER hardcode IPs, tokens, or passwords into `onu_monitor.py`.
+- The codebase reads configuration from `onu_config.ini` using Go's `gopkg.in/ini.v1`. 
+- NEVER hardcode IPs, tokens, or passwords into the codebase.
 - If testing locally, duplicate `onu_config.example.ini` to `onu_config.ini` and populate the fields.
-- The virtual environment is located at `.venv/`. If executing the script via systemd, it must be invoked with `.venv/bin/python`.
+- The project is written in Go (requires Go 1.23+). It compiles to a single binary `onu-monitor` and can be built into a `.deb` package using `build_deb.sh`.
 
 ## Data Payloads
 - The GPON stats API is at `/cgi?9`. It expects an HTTP POST with the exact JSON payload: `{"operation":"gl","oid":"DEV2_OPTC_GPON_CFG","data":{"stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`

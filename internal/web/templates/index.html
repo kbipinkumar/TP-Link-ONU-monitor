@@ -213,15 +213,82 @@
             <p class="subtitle">Configure your GPON statistics scraper</p>
         </header>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for category, message in messages %}
-                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+        {{ with .Messages }}
+            <div class="flash-messages">
+                {{ range . }}
+                    <div class="flash-message flash-{{ .Category }}">{{ .Message }}</div>
+                {{ end }}
+            </div>
+        {{ end }}
+
+		<!-- Status Dashboard -->
+		<div class="card">
+			<h2>📊 Live Status Dashboard</h2>
+			
+			{{ if .Status }}
+				{{ if .Status.LastError }}
+				<div class="flash-message flash-warning" style="margin-bottom: 20px;">
+					<strong>Alert:</strong> {{ .Status.LastError }}
+				</div>
+				{{ end }}
+
+				<div class="grid-2" style="margin-bottom: 20px;">
+					<div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+						<div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">Last Scrape Time</div>
+						<div class="local-time" data-time="{{ .Status.LastScrapeTime }}" style="font-weight: 600; font-family: monospace;">{{ if .Status.LastScrapeTime }}{{ .Status.LastScrapeTime }}{{ else }}Never{{ end }}</div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+						<div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">Last MQTT Publish</div>
+						<div class="local-time" data-time="{{ .Status.LastMqttTime }}" style="font-weight: 600; font-family: monospace;">{{ if .Status.LastMqttTime }}{{ .Status.LastMqttTime }}{{ else }}Never{{ end }}</div>
+					</div>
+				</div>
+
+				{{ if .Status.Stats }}
+				<h3 style="font-size: 1.1rem; margin-top: 0; margin-bottom: 15px; color: var(--text-primary);">Latest Optical Metrics</h3>
+				<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">RX Power</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: {{ if lt .Status.Stats.RxPowerDBm -27.0 }}#ef4444{{ else }}#34d399{{ end }};">{{ printf "%.2f" .Status.Stats.RxPowerDBm }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">dBm</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">TX Power</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: #60a5fa;">{{ printf "%.2f" .Status.Stats.TxPowerDBm }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">dBm</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">Temperature</div>
+						<div style="font-size: 1.4rem; font-weight: 700; color: #facc15;">{{ printf "%.2f" .Status.Stats.TemperatureC }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">°C</span></div>
+					</div>
+					<div style="background: rgba(15, 23, 42, 0.6); padding: 15px 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+						<div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">Voltage</div>
+						<div style="font-size: 1.4rem; font-weight: 700;">{{ printf "%.2f" .Status.Stats.VoltageV }} <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 400;">V</span></div>
+					</div>
+				</div>
+				{{ end }}
+			{{ else }}
+				<div style="text-align: center; padding: 30px; background: rgba(15, 23, 42, 0.4); border-radius: 8px; border: 1px dashed var(--border-color);">
+					<div style="font-size: 2rem; margin-bottom: 10px;">⏳</div>
+					<div style="color: var(--text-secondary); font-size: 1.05rem;">No status data available yet.</div>
+					<div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">The background scraper runs every 5 minutes. Please wait for the first run or click "Save Configuration" to restart the timer.</div>
+				</div>
+			{{ end }}
+		</div>
+
+		<form action="/update-webui" method="POST">
+			<div class="card">
+				<h2>🔐 Web GUI Access</h2>
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="webui_username">New Web UI Username</label>
+						<input type="text" id="webui_username" name="webui_username" placeholder="Enter new username" required>
+					</div>
+					<div class="form-group">
+						<label for="webui_password">New Web UI Password</label>
+						<input type="password" id="webui_password" name="webui_password" placeholder="Enter new password" required>
+					</div>
+				</div>
+				<button type="submit" class="btn-primary" style="margin-top: 10px; background-color: var(--surface-color); border: 1px solid var(--border-color); color: var(--text-primary);">Update Web UI Credentials</button>
+			</div>
+		</form>
 
         <form action="/save" method="POST">
             <!-- ONU Section -->
@@ -229,12 +296,12 @@
                 <h2>🌐 Router Credentials</h2>
                 <div class="form-group">
                     <label for="onu_ip">ONU IP Address</label>
-                    <input type="text" id="onu_ip" name="onu_ip" value="{{ config.get('ONU', 'IP', fallback='192.168.1.1') }}" required>
+                    <input type="text" id="onu_ip" name="onu_ip" value="{{ .Config.ONU.IP }}" required>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="onu_username">Web UI Username</label>
-                        <input type="text" id="onu_username" name="onu_username" value="{{ config.get('ONU', 'USERNAME', fallback='user') }}" required>
+                        <input type="text" id="onu_username" name="onu_username" value="{{ .Config.ONU.Username }}" required>
                     </div>
                     <div class="form-group">
                         <label for="onu_password">Web UI Password</label>
@@ -247,23 +314,23 @@
             <div class="card">
                 <h2>📡 MQTT (Home Assistant)</h2>
                 <div class="checkbox-group">
-                    <input type="checkbox" id="mqtt_enable" name="mqtt_enable" {% if config.getboolean('MQTT', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <input type="checkbox" id="mqtt_enable" name="mqtt_enable" {{ if .Config.MQTT.Enable }}checked{{ end }}>
                     <label for="mqtt_enable">Enable MQTT Publishing</label>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_broker">Broker IP / Hostname</label>
-                        <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.get('MQTT', 'BROKER', fallback='127.0.0.1') }}">
+                        <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ .Config.MQTT.Broker }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_port">Port</label>
-                        <input type="number" id="mqtt_port" name="mqtt_port" value="{{ config.get('MQTT', 'PORT', fallback='1883') }}">
+                        <input type="number" id="mqtt_port" name="mqtt_port" value="{{ .Config.MQTT.Port }}">
                     </div>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_user">Username (Optional)</label>
-                        <input type="text" id="mqtt_user" name="mqtt_user" value="{{ config.get('MQTT', 'USER', fallback='') }}">
+                        <input type="text" id="mqtt_user" name="mqtt_user" value="{{ .Config.MQTT.User }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_password">Password (Optional)</label>
@@ -273,11 +340,11 @@
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="mqtt_topic">Base Topic</label>
-                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ config.get('MQTT', 'TOPIC', fallback='tele/onu/gpon_stats') }}">
+                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ .Config.MQTT.Topic }}">
                     </div>
                     <div class="form-group">
                         <label for="mqtt_client_id">Client ID</label>
-                        <input type="text" id="mqtt_client_id" name="mqtt_client_id" value="{{ config.get('MQTT', 'CLIENT_ID', fallback='onu_monitor') }}">
+                        <input type="text" id="mqtt_client_id" name="mqtt_client_id" value="{{ .Config.MQTT.ClientID }}">
                     </div>
                 </div>
             </div>
@@ -286,12 +353,12 @@
             <div class="card">
                 <h2>📈 InfluxDB (Grafana)</h2>
                 <div class="checkbox-group">
-                    <input type="checkbox" id="influx_enable" name="influx_enable" {% if config.getboolean('INFLUXDB', 'ENABLE', fallback=False) %}checked{% endif %}>
+                    <input type="checkbox" id="influx_enable" name="influx_enable" {{ if .Config.INFLUXDB.Enable }}checked{{ end }}>
                     <label for="influx_enable">Enable InfluxDB Publishing</label>
                 </div>
                 <div class="form-group">
                     <label for="influx_url">Server URL</label>
-                    <input type="text" id="influx_url" name="influx_url" value="{{ config.get('INFLUXDB', 'URL', fallback='http://127.0.0.1:8086') }}">
+                    <input type="text" id="influx_url" name="influx_url" value="{{ .Config.INFLUXDB.URL }}">
                 </div>
                 <div class="form-group">
                     <label for="influx_token">API Token</label>
@@ -300,17 +367,62 @@
                 <div class="grid-2">
                     <div class="form-group">
                         <label for="influx_org">Organization</label>
-                        <input type="text" id="influx_org" name="influx_org" value="{{ config.get('INFLUXDB', 'ORG', fallback='home') }}">
+                        <input type="text" id="influx_org" name="influx_org" value="{{ .Config.INFLUXDB.Org }}">
                     </div>
                     <div class="form-group">
                         <label for="influx_bucket">Bucket</label>
-                        <input type="text" id="influx_bucket" name="influx_bucket" value="{{ config.get('INFLUXDB', 'BUCKET', fallback='network_stats') }}">
+                        <input type="text" id="influx_bucket" name="influx_bucket" value="{{ .Config.INFLUXDB.Bucket }}">
                     </div>
                 </div>
             </div>
-
-            <button type="submit" class="btn-primary">Save Configuration & Restart Monitor</button>
+            <div style="display: flex; gap: 15px;">
+                <button type="submit" class="btn-primary" style="flex: 2;">Save Configuration & Restart Monitor</button>
+                <button type="button" id="btn-test" style="flex: 1; padding: 14px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.6); color: var(--text-primary); transition: all 0.2s ease; font-family: 'Inter', sans-serif;">Test Connection</button>
+            </div>
         </form>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('btn-test').addEventListener('click', async () => {
+                const btn = document.getElementById('btn-test');
+                const originalText = btn.textContent;
+                btn.textContent = "Testing...";
+                btn.disabled = true;
+
+                const formData = new FormData(document.getElementById('config-form'));
+                try {
+                    const response = await fetch('/test-connection', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert("Success! Connected to ONU.\nRX Power: " + result.stats.rx_power_dbm + " dBm\nTX Power: " + result.stats.tx_power_dbm + " dBm\nTemperature: " + result.stats.temperature_c + " °C");
+                    } else {
+                        alert("Connection Test Failed:\n" + result.error);
+                    }
+                } catch (err) {
+                    alert("Error making request: " + err);
+                } finally {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            });
+
+            document.querySelectorAll('.local-time').forEach(el => {
+                const timeStr = el.getAttribute('data-time');
+                if (timeStr && timeStr !== "Never" && timeStr !== "") {
+                    const d = new Date(timeStr);
+                    if (!isNaN(d)) {
+                        el.textContent = d.toLocaleString(undefined, {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit'
+                        });
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>
