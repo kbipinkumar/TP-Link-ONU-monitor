@@ -44,12 +44,10 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 30px;
-            align-items: start;
         }
 
         .config-grid .card {
             margin-bottom: 0;
-            height: 100%;
         }
 
         header {
@@ -223,10 +221,7 @@
 <body>
     <div class="container">
         <header>
-            <picture>
-                <source media="(prefers-color-scheme: dark)" srcset="/static/wordmark-horizontal-dark-bg.svg">
-                <img alt="ONU Monitor Portal" src="/static/wordmark-horizontal.svg" style="max-height: 60px; width: auto;">
-            </picture>
+            <img alt="ONU Monitor Portal" src="/static/wordmark-horizontal-dark-bg.svg" style="max-height: 60px; width: auto;">
             <p class="subtitle" style="margin-top: 15px;">Configure your GPON statistics scraper</p>
         </header>
 
