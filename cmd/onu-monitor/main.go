@@ -48,7 +48,7 @@ func main() {
 	case "setup":
 		cli.RunInteractiveSetup(configPath)
 	case "web":
-		web.Init(configPath)
+		web.Init(configPath, Version)
 		web.StartServer("8991")
 	case "scrape":
 		log.Println("Starting ONU GPON Status Monitor...")

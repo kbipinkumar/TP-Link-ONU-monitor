@@ -156,8 +156,11 @@
 <body>
     <div class="container">
         <header>
-            <h1>Welcome to ONU Monitor</h1>
-            <p class="subtitle">Before we begin, please create a secure username and password to protect your configuration portal.</p>
+            <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="/static/wordmark-horizontal-dark-bg.svg">
+                <img alt="ONU Monitor Portal" src="/static/wordmark-horizontal.svg" style="max-height: 60px; width: auto;">
+            </picture>
+            <p class="subtitle" style="margin-top: 15px;">Before we begin, please create a secure username and password to protect your configuration portal.</p>
         </header>
 
         {{ with .Messages }}
@@ -183,6 +186,10 @@
                 <button type="submit" class="btn-primary">Secure Portal & Continue</button>
             </form>
         </div>
+        
+        <footer style="text-align: center; margin-top: 40px; margin-bottom: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+            ONU Monitor Version: {{ .Version }}
+        </footer>
     </div>
 </body>
 </html>

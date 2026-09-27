@@ -47,12 +47,15 @@ type TemplateData struct {
 	Messages []FlashMessage
 	Config   *scraper.Config
 	Status   *scraper.SystemStatus
+	Version  string
 }
 
 var configPath string
+var appVersion string
 
-func Init(cfgPath string) {
+func Init(cfgPath string, version string) {
 	configPath = cfgPath
+	appVersion = version
 }
 
 func getFlash(w http.ResponseWriter, r *http.Request) []FlashMessage {
@@ -253,7 +256,7 @@ func SetupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msgs := getFlash(w, r)
-	tpls.ExecuteTemplate(w, "setup.html", TemplateData{Messages: msgs})
+	tpls.ExecuteTemplate(w, "setup.html", TemplateData{Messages: msgs, Version: appVersion})
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +281,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		Messages: msgs,
 		Config:   config,
 		Status:   status,
+		Version:  appVersion,
 	})
 }
 
