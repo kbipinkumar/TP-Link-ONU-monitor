@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ONU Monitor Configuration</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="/static/logo-favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -34,8 +36,18 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             width: 100%;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+            gap: 30px;
+        }
+
+        .config-grid .card {
+            margin-bottom: 0;
         }
 
         header {
@@ -209,8 +221,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>ONU Monitor Portal</h1>
-            <p class="subtitle">Configure your GPON statistics scraper</p>
+            <img alt="ONU Monitor Portal" src="/static/wordmark-horizontal-dark-bg.svg" style="max-height: 60px; width: auto;">
+            <p class="subtitle" style="margin-top: 15px;">Configure your GPON statistics scraper</p>
         </header>
 
         {{ with .Messages }}
@@ -291,6 +303,7 @@
 		</form>
 
         <form action="/save" method="POST">
+            <div class="config-grid">
             <!-- ONU Section -->
             <div class="card">
                 <h2>🌐 Router Credentials</h2>
@@ -374,12 +387,17 @@
                         <input type="text" id="influx_bucket" name="influx_bucket" value="{{ .Config.INFLUXDB.Bucket }}">
                     </div>
                 </div>
-            </div>
-            <div style="display: flex; gap: 15px;">
+            </div>            </div>
+            
+            <div style="display: flex; gap: 15px; margin-top: 30px;">
                 <button type="submit" class="btn-primary" style="flex: 2;">Save Configuration & Restart Monitor</button>
                 <button type="button" id="btn-test" style="flex: 1; padding: 14px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.6); color: var(--text-primary); transition: all 0.2s ease; font-family: 'Inter', sans-serif;">Test Connection</button>
             </div>
         </form>
+
+        <footer style="text-align: center; margin-top: 40px; margin-bottom: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+            ONU Monitor Version: {{ .Version }}
+        </footer>
     </div>
 
     <script>

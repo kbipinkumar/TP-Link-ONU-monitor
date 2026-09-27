@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ONU Monitor - First Time Setup</title>
+    <link rel="icon" href="/static/favicon.ico" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="/static/logo-favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -154,8 +156,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>Welcome to ONU Monitor</h1>
-            <p class="subtitle">Before we begin, please create a secure username and password to protect your configuration portal.</p>
+            <img alt="ONU Monitor Portal" src="/static/wordmark-horizontal-dark-bg.svg" style="max-height: 60px; width: auto;">
+            <p class="subtitle" style="margin-top: 15px;">Before we begin, please create a secure username and password to protect your configuration portal.</p>
         </header>
 
         {{ with .Messages }}
@@ -181,6 +183,10 @@
                 <button type="submit" class="btn-primary">Secure Portal & Continue</button>
             </form>
         </div>
+        
+        <footer style="text-align: center; margin-top: 40px; margin-bottom: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+            ONU Monitor Version: {{ .Version }}
+        </footer>
     </div>
 </body>
 </html>

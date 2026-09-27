@@ -26,6 +26,7 @@ import (
 
 	"gopkg.in/ini.v1"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
+	"github.com/kbipinkumar/TP-Link-ONU-monitor/assets"
 )
 
 //go:embed templates/*
@@ -46,12 +47,15 @@ type TemplateData struct {
 	Messages []FlashMessage
 	Config   *scraper.Config
 	Status   *scraper.SystemStatus
+	Version  string
 }
 
 var configPath string
+var appVersion string
 
-func Init(cfgPath string) {
+func Init(cfgPath string, version string) {
 	configPath = cfgPath
+	appVersion = version
 }
 
 func getFlash(w http.ResponseWriter, r *http.Request) []FlashMessage {
@@ -252,7 +256,7 @@ func SetupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msgs := getFlash(w, r)
-	tpls.ExecuteTemplate(w, "setup.html", TemplateData{Messages: msgs})
+	tpls.ExecuteTemplate(w, "setup.html", TemplateData{Messages: msgs, Version: appVersion})
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -277,6 +281,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		Messages: msgs,
 		Config:   config,
 		Status:   status,
+		Version:  appVersion,
 	})
 }
 
@@ -500,6 +505,7 @@ func StartServer(port string) {
 	http.HandleFunc("/save", authMiddleware(SaveHandler))
 	http.HandleFunc("/test-connection", authMiddleware(TestConnectionHandler))
 	http.HandleFunc("/update-webui", authMiddleware(UpdateWebUIHandler))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets.FS))))
 	
 	srv := &http.Server{
 		Addr:         ":" + port,

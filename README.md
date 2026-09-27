@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/wordmark-horizontal-dark-bg.svg">
+  <img alt="onu monitor" src="./assets/wordmark-horizontal.svg">
+</picture>
+
 # TP-Link GPON ONU Monitor (XZ000-G7)
 
 A tool to scrape live GPON statistics (RX Power, TX Power, Temperature, Voltage, Bias Current) from a TP-Link XZ000-G7 GPON ONU. It natively publishes to MQTT with Home Assistant Auto-Discovery, as well as InfluxDB v2. While this tool is primarily written for XZ000-G7 GPON ONU it should be able to scrape data from other TP-link ONUs as well(not tested).
