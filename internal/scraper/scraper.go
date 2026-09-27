@@ -70,7 +70,10 @@ type GPONStats struct {
 	SerialNumber  string      `json:"serial_number"`
 }
 
-var tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
+var (
+	tokenRegex      = regexp.MustCompile(`var token="([^"]+)";`)
+	lastKnownSerial string
+)
 
 func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
 	resp, err := client.Do(req)
@@ -131,8 +134,8 @@ func LoadConfig(path string) (*Config, error) {
 	if config.MQTT.Port == 0 {
 		config.MQTT.Port = 1883
 	}
-	if config.MQTT.Topic == "" {
-		config.MQTT.Topic = "tele/onu/gpon_stats"
+	if config.MQTT.Topic == "tele/onu/gpon_stats" || config.MQTT.Topic == "homeassistant/sensor/onu_monitor/state" {
+		config.MQTT.Topic = ""
 	}
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
@@ -457,10 +460,17 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		}
 		if val, ok := devInfo["serialNumber"]; ok && val != nil {
 			stats.SerialNumber = parseString(val)
+			if stats.SerialNumber != "" {
+				lastKnownSerial = stats.SerialNumber
+			}
 		}
 		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
 			stats.Uptime = uptime
 		}
+	}
+
+	if stats.SerialNumber == "" && lastKnownSerial != "" {
+		stats.SerialNumber = lastKnownSerial
 	}
 
 	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
