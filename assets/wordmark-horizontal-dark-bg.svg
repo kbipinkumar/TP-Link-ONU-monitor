@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 100" width="420" height="100">
+  <defs>
+    <linearGradient id="beam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2f6fed"/>
+      <stop offset="100%" stop-color="#22b8b0"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(50,50) scale(0.5)">
+    <polygon points="0,-70 61,-35 61,35 0,70 -61,35 -61,-35" fill="none" stroke="#c7ccd6" stroke-width="4"/>
+    <line x1="-50" y1="45" x2="50" y2="-45" stroke="url(#beam)" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="-50" cy="45" r="10" fill="#2f6fed"/>
+    <circle cx="50" cy="-45" r="10" fill="#22b8b0"/>
+    <path d="M 5 -20 Q 22 -30 5 -40" fill="none" stroke="#22b8b0" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+  </g>
+  <text x="105" y="60" font-family="'DejaVu Sans Mono', 'Courier New', monospace" font-size="34" font-weight="500" fill="#eef0f4">onu monitor</text>
+</svg>

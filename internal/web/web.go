@@ -26,6 +26,7 @@ import (
 
 	"gopkg.in/ini.v1"
 	"github.com/kbipinkumar/TP-Link-ONU-monitor/internal/scraper"
+	"github.com/kbipinkumar/TP-Link-ONU-monitor/assets"
 )
 
 //go:embed templates/*
@@ -500,6 +501,7 @@ func StartServer(port string) {
 	http.HandleFunc("/save", authMiddleware(SaveHandler))
 	http.HandleFunc("/test-connection", authMiddleware(TestConnectionHandler))
 	http.HandleFunc("/update-webui", authMiddleware(UpdateWebUIHandler))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets.FS))))
 	
 	srv := &http.Server{
 		Addr:         ":" + port,
