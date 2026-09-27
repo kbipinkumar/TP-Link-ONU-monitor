@@ -339,16 +339,19 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 
 	gponData := statsResp.Data[0]
 	
-	parseFloat := func(key string) (float64, error) {
-		v, ok := gponData[key]
+	parseAnyFloat := func(m map[string]interface{}, key string) (float64, error) {
+		v, ok := m[key]
 		if !ok {
-			return 0, nil // preserve existing behavior for absent fields
+			return 0, fmt.Errorf("missing key %s", key) // distinguish from zero value
 		}
 		if v == nil {
 			return 0, fmt.Errorf("field %s is null", key)
 		}
 		switch i := v.(type) {
 		case float64:
+			if math.IsNaN(i) || math.IsInf(i, 0) {
+				return 0, fmt.Errorf("invalid numeric value for %s: NaN or Infinity", key)
+			}
 			return i, nil
 		case string:
 			f, err := strconv.ParseFloat(i, 64)
@@ -362,6 +365,14 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		default:
 			return 0, fmt.Errorf("unsupported type for %s", key)
 		}
+	}
+	
+	parseFloat := func(key string) (float64, error) {
+		val, err := parseAnyFloat(gponData, key)
+		if err != nil && strings.HasPrefix(err.Error(), "missing key") {
+			return 0, nil // preserve existing behavior for absent fields in gponData
+		}
+		return val, err
 	}
 	parseString := func(v interface{}) string {
 		if s, ok := v.(string); ok {
@@ -441,23 +452,27 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	}
 
 	if devInfo, err := fetchOID(`{"operation":"go","oid":"DEV2_DEV_INFO","data":{"hardwareVersion":"","softwareVersion":"","serialNumber":"","modelName":"","upTime":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
-		stats.ModelName = parseString(devInfo["modelName"])
-		stats.SerialNumber = parseString(devInfo["serialNumber"])
-		if val, err := strconv.ParseFloat(parseString(devInfo["upTime"]), 64); err == nil {
-			stats.Uptime = val
+		if val, ok := devInfo["modelName"]; ok && val != nil {
+			stats.ModelName = parseString(val)
+		}
+		if val, ok := devInfo["serialNumber"]; ok && val != nil {
+			stats.SerialNumber = parseString(val)
+		}
+		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
+			stats.Uptime = uptime
 		}
 	}
 
 	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
-		if val, err := strconv.ParseFloat(parseString(procStatus["CPUUsage"]), 64); err == nil {
-			stats.CPUUsage = val
+		if cpu, err := parseAnyFloat(procStatus, "CPUUsage"); err == nil {
+			stats.CPUUsage = cpu
 		}
 	}
 
 	if memStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_MEM_STATUS","data":{"total":"","free":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
-		total, _ := strconv.ParseFloat(parseString(memStatus["total"]), 64)
-		free, _ := strconv.ParseFloat(parseString(memStatus["free"]), 64)
-		if total > 0 {
+		total, errTotal := parseAnyFloat(memStatus, "total")
+		free, errFree := parseAnyFloat(memStatus, "free")
+		if errTotal == nil && errFree == nil && total > 0 {
 			stats.MemUsage = math.Round(((total-free)/total)*10000) / 100
 		}
 	}
@@ -509,10 +524,32 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic"},
 	}
 
-	identifiers := []string{"tp_link_xz000_g7"}
-	if stats.SerialNumber != "" {
-		identifiers = append(identifiers, stats.SerialNumber)
+	identity := stats.SerialNumber
+	if identity == "" {
+		identity = "tp_link_xz000_g7"
 	}
+	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
+	
+	// If the stateTopic was implicitly set based on the old baseTopic, we should update it
+	// Only if the user didn't override it in config.
+	if cfg.MQTT.Topic == "" {
+		stateTopic = newBaseTopic + "/state"
+	}
+
+	// Account for existing retained discovery records during this migration
+	if identity != "tp_link_xz000_g7" {
+		oldBaseTopic := "homeassistant/sensor/onu_monitor"
+		for key := range sensors {
+			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
+			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
+				if token.Error() != nil {
+					log.Printf("Failed to clear old retained config for %s: %v", key, token.Error())
+				}
+			}
+		}
+	}
+
+	identifiers := []string{identity}
 	model := "XZ000-G7"
 	if stats.ModelName != "" {
 		model = stats.ModelName
@@ -520,12 +557,12 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 	deviceName := "TP-Link " + model
 
 	for key, info := range sensors {
-		configTopic := fmt.Sprintf("%s/%s/config", baseTopic, key)
+		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
 		configPayload := map[string]interface{}{
 			"name":                info.Name,
 			"state_topic":         stateTopic,
 			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info.Val),
-			"unique_id":           fmt.Sprintf("tp_link_onu_%s", key),
+			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
 			"device": map[string]interface{}{
 				"identifiers":  identifiers,
 				"name":         deviceName,
@@ -542,7 +579,13 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		if info.Category != "" {
 			configPayload["entity_category"] = info.Category
 		}
-		payloadBytes, _ := json.Marshal(configPayload)
+		
+		payloadBytes, err := json.Marshal(configPayload)
+		if err != nil {
+			log.Printf("MQTT marshal config error for %s: %v", key, err)
+			continue
+		}
+		
 		if token := client.Publish(configTopic, 0, true, payloadBytes); token.WaitTimeout(5*time.Second) {
 			if token.Error() != nil {
 				log.Printf("MQTT publish config error: %v", token.Error())
@@ -554,7 +597,11 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		}
 	}
 
-	statsBytes, _ := json.Marshal(stats)
+	statsBytes, err := json.Marshal(stats)
+	if err != nil {
+		return fmt.Errorf("MQTT marshal state error: %w", err)
+	}
+	
 	if token := client.Publish(stateTopic, 0, true, statsBytes); token.WaitTimeout(5*time.Second) {
 		if token.Error() != nil {
 			log.Printf("MQTT publish state error: %v", token.Error())
