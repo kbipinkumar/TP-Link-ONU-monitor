@@ -63,9 +63,17 @@ type GPONStats struct {
 	XPonStatus    string      `json:"xpon_status"`
 	RawRxPower    interface{} `json:"raw_rx_power"`
 	RawTxPower    interface{} `json:"raw_tx_power"`
+	CPUUsage      float64     `json:"cpu_usage"`
+	MemUsage      float64     `json:"mem_usage"`
+	Uptime        float64     `json:"uptime"`
+	ModelName     string      `json:"model_name"`
+	SerialNumber  string      `json:"serial_number"`
 }
 
-var tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
+var (
+	tokenRegex      = regexp.MustCompile(`var token="([^"]+)";`)
+	lastKnownSerial string
+)
 
 func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
 	resp, err := client.Do(req)
@@ -126,8 +134,8 @@ func LoadConfig(path string) (*Config, error) {
 	if config.MQTT.Port == 0 {
 		config.MQTT.Port = 1883
 	}
-	if config.MQTT.Topic == "" {
-		config.MQTT.Topic = "tele/onu/gpon_stats"
+	if config.MQTT.Topic == "tele/onu/gpon_stats" || config.MQTT.Topic == "homeassistant/sensor/onu_monitor/state" {
+		config.MQTT.Topic = ""
 	}
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
@@ -334,16 +342,19 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 
 	gponData := statsResp.Data[0]
 	
-	parseFloat := func(key string) (float64, error) {
-		v, ok := gponData[key]
+	parseAnyFloat := func(m map[string]interface{}, key string) (float64, error) {
+		v, ok := m[key]
 		if !ok {
-			return 0, nil // preserve existing behavior for absent fields
+			return 0, fmt.Errorf("missing key %s", key) // distinguish from zero value
 		}
 		if v == nil {
 			return 0, fmt.Errorf("field %s is null", key)
 		}
 		switch i := v.(type) {
 		case float64:
+			if math.IsNaN(i) || math.IsInf(i, 0) {
+				return 0, fmt.Errorf("invalid numeric value for %s: NaN or Infinity", key)
+			}
 			return i, nil
 		case string:
 			f, err := strconv.ParseFloat(i, 64)
@@ -357,6 +368,14 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		default:
 			return 0, fmt.Errorf("unsupported type for %s", key)
 		}
+	}
+	
+	parseFloat := func(key string) (float64, error) {
+		val, err := parseAnyFloat(gponData, key)
+		if err != nil && strings.HasPrefix(err.Error(), "missing key") {
+			return 0, nil // preserve existing behavior for absent fields in gponData
+		}
+		return val, err
 	}
 	parseString := func(v interface{}) string {
 		if s, ok := v.(string); ok {
@@ -408,6 +427,65 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		RawRxPower:    gponData["RXPower"],
 		RawTxPower:    gponData["TXPower"],
 	}
+
+	fetchOID := func(payload string) (map[string]interface{}, error) {
+		req, err := http.NewRequest("POST", statsURL, bytes.NewBufferString(payload+"\r\n"))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("TokenID", tokenID)
+		req.Header.Set("Referer", "http://"+cfg.ONU.IP+"/")
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		var res struct {
+			Data map[string]interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
+			return nil, err
+		}
+		return res.Data, nil
+	}
+
+	if devInfo, err := fetchOID(`{"operation":"go","oid":"DEV2_DEV_INFO","data":{"hardwareVersion":"","softwareVersion":"","serialNumber":"","modelName":"","upTime":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		if val, ok := devInfo["modelName"]; ok && val != nil {
+			stats.ModelName = parseString(val)
+		}
+		if val, ok := devInfo["serialNumber"]; ok && val != nil {
+			stats.SerialNumber = parseString(val)
+			if stats.SerialNumber != "" {
+				lastKnownSerial = stats.SerialNumber
+			}
+		}
+		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
+			stats.Uptime = uptime
+		}
+	}
+
+	if stats.SerialNumber == "" && lastKnownSerial != "" {
+		stats.SerialNumber = lastKnownSerial
+	}
+
+	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		if cpu, err := parseAnyFloat(procStatus, "CPUUsage"); err == nil {
+			stats.CPUUsage = cpu
+		}
+	}
+
+	if memStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_MEM_STATUS","data":{"total":"","free":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
+		total, errTotal := parseAnyFloat(memStatus, "total")
+		free, errFree := parseAnyFloat(memStatus, "free")
+		if errTotal == nil && errFree == nil && total > 0 {
+			stats.MemUsage = math.Round(((total-free)/total)*10000) / 100
+		}
+	}
 	
 	return stats, nil
 }
@@ -433,30 +511,91 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		stateTopic = baseTopic + "/state"
 	}
 
-	sensors := map[string]map[string]string{
-		"rx_power":     {"name": "ONU RX Power", "unit": "dBm", "class": "signal_strength", "val": "rx_power_dbm"},
-		"tx_power":     {"name": "ONU TX Power", "unit": "dBm", "class": "signal_strength", "val": "tx_power_dbm"},
-		"temperature":  {"name": "ONU Temperature", "unit": "°C", "class": "temperature", "val": "temperature_c"},
-		"voltage":      {"name": "ONU Supply Voltage", "unit": "mV", "class": "voltage", "val": "voltage_mv"},
-		"bias_current": {"name": "ONU Bias Current", "unit": "mA", "class": "current", "val": "bias_current_ma"},
+	type sensorConfig struct {
+		Name     string
+		Unit     string
+		Class    string
+		Val      string
+		Category string
 	}
 
+	sensors := map[string]sensorConfig{
+		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", ""},
+		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", ""},
+		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", ""},
+		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", ""},
+		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", ""},
+		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", ""},
+		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", ""},
+		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic"},
+		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic"},
+		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic"},
+		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic"},
+		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic"},
+	}
+
+	identity := stats.SerialNumber
+	if identity == "" {
+		identity = "tp_link_xz000_g7"
+	}
+	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
+	
+	// If the stateTopic was implicitly set based on the old baseTopic, we should update it
+	// Only if the user didn't override it in config.
+	if cfg.MQTT.Topic == "" {
+		stateTopic = newBaseTopic + "/state"
+	}
+
+	// Account for existing retained discovery records during this migration
+	if identity != "tp_link_xz000_g7" {
+		oldBaseTopic := "homeassistant/sensor/onu_monitor"
+		for key := range sensors {
+			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
+			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
+				if token.Error() != nil {
+					log.Printf("Failed to clear old retained config for %s: %v", key, token.Error())
+				}
+			}
+		}
+	}
+
+	identifiers := []string{identity}
+	model := "XZ000-G7"
+	if stats.ModelName != "" {
+		model = stats.ModelName
+	}
+	deviceName := "TP-Link " + model
+
 	for key, info := range sensors {
-		configTopic := fmt.Sprintf("%s/%s/config", baseTopic, key)
+		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
 		configPayload := map[string]interface{}{
-			"name":                info["name"],
+			"name":                info.Name,
 			"state_topic":         stateTopic,
-			"unit_of_measurement": info["unit"],
-			"device_class":        info["class"],
-			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info["val"]),
-			"unique_id":           fmt.Sprintf("tp_link_onu_%s", key),
+			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info.Val),
+			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
 			"device": map[string]interface{}{
-				"identifiers":  []string{"tp_link_xz000_g7"},
-				"name":         "TP-Link XZ000-G7 ONU",
+				"identifiers":  identifiers,
+				"name":         deviceName,
 				"manufacturer": "TP-Link",
+				"model":        model,
 			},
 		}
-		payloadBytes, _ := json.Marshal(configPayload)
+		if info.Unit != "" {
+			configPayload["unit_of_measurement"] = info.Unit
+		}
+		if info.Class != "" {
+			configPayload["device_class"] = info.Class
+		}
+		if info.Category != "" {
+			configPayload["entity_category"] = info.Category
+		}
+		
+		payloadBytes, err := json.Marshal(configPayload)
+		if err != nil {
+			log.Printf("MQTT marshal config error for %s: %v", key, err)
+			continue
+		}
+		
 		if token := client.Publish(configTopic, 0, true, payloadBytes); token.WaitTimeout(5*time.Second) {
 			if token.Error() != nil {
 				log.Printf("MQTT publish config error: %v", token.Error())
@@ -468,7 +607,11 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		}
 	}
 
-	statsBytes, _ := json.Marshal(stats)
+	statsBytes, err := json.Marshal(stats)
+	if err != nil {
+		return fmt.Errorf("MQTT marshal state error: %w", err)
+	}
+	
 	if token := client.Publish(stateTopic, 0, true, statsBytes); token.WaitTimeout(5*time.Second) {
 		if token.Error() != nil {
 			log.Printf("MQTT publish state error: %v", token.Error())
