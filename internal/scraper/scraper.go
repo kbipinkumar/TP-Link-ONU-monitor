@@ -63,11 +63,11 @@ type GPONStats struct {
 	XPonStatus    string      `json:"xpon_status"`
 	RawRxPower    interface{} `json:"raw_rx_power"`
 	RawTxPower    interface{} `json:"raw_tx_power"`
-	CPUUsage      float64     `json:"cpu_usage"`
-	MemUsage      float64     `json:"mem_usage"`
-	Uptime        float64     `json:"uptime"`
-	ModelName     string      `json:"model_name"`
-	SerialNumber  string      `json:"serial_number"`
+	CPUUsage      *float64    `json:"cpu_usage,omitempty"`
+	MemUsage      *float64    `json:"mem_usage,omitempty"`
+	Uptime        *float64    `json:"uptime,omitempty"`
+	ModelName     string      `json:"model_name,omitempty"`
+	SerialNumber  string      `json:"serial_number,omitempty"`
 }
 
 var (
@@ -80,6 +80,9 @@ func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+	}
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
 }
 
@@ -447,16 +450,15 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 
-		resp, err := client.Do(req)
+		body, err := doRequest(client, req)
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 
 		var res struct {
 			Data map[string]interface{} `json:"data"`
 		}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
+		if err := json.Unmarshal(body, &res); err != nil {
 			return nil, err
 		}
 		return res.Data, nil
@@ -470,22 +472,29 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 			stats.SerialNumber = parseString(val)
 		}
 		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
-			stats.Uptime = uptime
+			stats.Uptime = &uptime
 		}
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_DEV_INFO: %v", err)
 	}
 
 	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
 		if cpu, err := parseAnyFloat(procStatus, "CPUUsage"); err == nil {
-			stats.CPUUsage = cpu
+			stats.CPUUsage = &cpu
 		}
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_PROC_STATUS: %v", err)
 	}
 
 	if memStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_MEM_STATUS","data":{"total":"","free":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
 		total, errTotal := parseAnyFloat(memStatus, "total")
 		free, errFree := parseAnyFloat(memStatus, "free")
 		if errTotal == nil && errFree == nil && total > 0 {
-			stats.MemUsage = math.Round(((total-free)/total)*10000) / 100
+			memUsage := math.Round(((total-free)/total)*10000) / 100
+			stats.MemUsage = &memUsage
 		}
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_MEM_STATUS: %v", err)
 	}
 	
 	return stats, nil
@@ -569,7 +578,7 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		configPayload := map[string]interface{}{
 			"name":                info.Name,
 			"state_topic":         stateTopic,
-			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info.Val),
+			"value_template":      fmt.Sprintf("{{ value_json.%s if value_json.%s is defined else None }}", info.Val, info.Val),
 			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
 			"device": map[string]interface{}{
 				"identifiers":  identifiers,
@@ -654,6 +663,16 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) error {
 		AddField("raw_rx_power", parseRaw(stats.RawRxPower)).
 		AddField("raw_tx_power", parseRaw(stats.RawTxPower)).
 		SetTime(time.Now())
+
+	if stats.CPUUsage != nil {
+		p.AddField("cpu_usage", *stats.CPUUsage)
+	}
+	if stats.MemUsage != nil {
+		p.AddField("mem_usage", *stats.MemUsage)
+	}
+	if stats.Uptime != nil {
+		p.AddField("uptime", *stats.Uptime)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
