@@ -145,9 +145,7 @@ func LoadConfig(path string) (*Config, error) {
 	if config.MQTT.Port == 0 {
 		config.MQTT.Port = 1883
 	}
-	if config.MQTT.Topic == "tele/onu/gpon_stats" || config.MQTT.Topic == "homeassistant/sensor/onu_monitor/state" {
-		config.MQTT.Topic = ""
-	}
+
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
 	}

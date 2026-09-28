@@ -80,7 +80,7 @@ func RunInteractiveSetup(configPath string) {
 				}
 				return nil
 			}),
-			huh.NewInput().Title("MQTT Base Topic").Value(&mqttTopic).Placeholder(config.MQTT.Topic),
+			huh.NewInput().Title("MQTT Base Topic (Leave blank for auto)").Value(&mqttTopic).Placeholder("homeassistant/sensor/onu_<serial>/state"),
 			huh.NewInput().Title("MQTT Client ID").Value(&mqttClientID).Placeholder(config.MQTT.ClientID),
 			huh.NewInput().Title("MQTT Username (Optional)").Value(&mqttUser).Placeholder(config.MQTT.User),
 			huh.NewInput().Title("MQTT Password (Optional)").Value(&mqttPass).EchoMode(huh.EchoModePassword),
