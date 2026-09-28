@@ -77,3 +77,24 @@ func TestBuildDiscoveryPayloads(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeSerial(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"12345", "12345"},
+		{"aB-c_d", "aB-c_d"},
+		{"a+b#c/d e", "abcde"},
+		{"", "unknown"},
+		{"+#/", "unknown"},
+		{"   ", "unknown"},
+	}
+
+	for _, tt := range tests {
+		got := SanitizeSerial(tt.input)
+		if got != tt.expected {
+			t.Errorf("SanitizeSerial(%q) = %q; want %q", tt.input, got, tt.expected)
+		}
+	}
+}

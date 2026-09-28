@@ -97,7 +97,7 @@ func main() {
 		status.Stats = stats
 		
 		if config.MQTT.Enable {
-			if stats.SerialNumber == "" {
+			if stats.SerialNumber == "" || stats.SerialNumber == "unknown" {
 				log.Println("[WARN] No ONU Serial Number obtained. Skipping MQTT publish to avoid fallback identity collision.")
 			} else {
 				if err := scraper.PublishMQTT(stats, config, status); err != nil {

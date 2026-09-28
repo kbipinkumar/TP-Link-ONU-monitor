@@ -23,7 +23,9 @@ jobs:
           go-version: '1.23.0'
 
       - name: Install dependencies
-        run: go mod tidy
+        run: |
+          go mod download
+          go mod verify
 
       - name: Build Debian Packages (amd64, arm64)
         run: |

@@ -118,8 +118,10 @@ func WriteStatus(path string, status *SystemStatus) error {
 }
 
 func ResolveIdentity(stats *GPONStats, status *SystemStatus) {
-	if stats.SerialNumber == "" {
-		stats.SerialNumber = status.SerialNumber
+	if stats.SerialNumber == "" || stats.SerialNumber == "unknown" {
+		if status.SerialNumber != "" && status.SerialNumber != "unknown" {
+			stats.SerialNumber = status.SerialNumber
+		}
 	} else {
 		status.SerialNumber = stats.SerialNumber
 	}
@@ -472,7 +474,7 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 			stats.ModelName = parseString(val)
 		}
 		if val, ok := devInfo["serialNumber"]; ok && val != nil {
-			stats.SerialNumber = parseString(val)
+			stats.SerialNumber = SanitizeSerial(parseString(val))
 		}
 		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
 			stats.Uptime = &uptime
@@ -714,4 +716,13 @@ func BuildDiscoveryPayloads(identity string, model string, stateTopic string, ex
 		payloads[configTopic] = configPayload
 	}
 	return payloads
+}
+
+func SanitizeSerial(s string) string {
+	reg := regexp.MustCompile(`[^A-Za-z0-9_-]`)
+	s = reg.ReplaceAllString(s, "")
+	if s == "" {
+		return "unknown"
+	}
+	return s
 }
