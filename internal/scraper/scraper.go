@@ -71,8 +71,7 @@ type GPONStats struct {
 }
 
 var (
-	tokenRegex      = regexp.MustCompile(`var token="([^"]+)";`)
-	lastKnownSerial string
+	tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
 )
 
 func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
@@ -90,6 +89,7 @@ type SystemStatus struct {
 	LastInfluxTime   string     `json:"last_influx_time"`
 	LastError        string     `json:"last_error"`
 	Stats            *GPONStats `json:"stats"`
+	SerialNumber     string     `json:"serial_number"`
 }
 
 func ReadStatus(path string) (*SystemStatus, error) {
@@ -110,6 +110,14 @@ func WriteStatus(path string, status *SystemStatus) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+func ResolveIdentity(stats *GPONStats, status *SystemStatus) {
+	if stats.SerialNumber == "" {
+		stats.SerialNumber = status.SerialNumber
+	} else {
+		status.SerialNumber = stats.SerialNumber
+	}
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -460,17 +468,10 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		}
 		if val, ok := devInfo["serialNumber"]; ok && val != nil {
 			stats.SerialNumber = parseString(val)
-			if stats.SerialNumber != "" {
-				lastKnownSerial = stats.SerialNumber
-			}
 		}
 		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
 			stats.Uptime = uptime
 		}
-	}
-
-	if stats.SerialNumber == "" && lastKnownSerial != "" {
-		stats.SerialNumber = lastKnownSerial
 	}
 
 	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
@@ -535,9 +536,6 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 	}
 
 	identity := stats.SerialNumber
-	if identity == "" {
-		identity = "tp_link_xz000_g7"
-	}
 	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
 	
 	// If the stateTopic was implicitly set based on the old baseTopic, we should update it
