@@ -39,8 +39,9 @@ type Config struct {
 		Port     int    `ini:"PORT"`
 		User     string `ini:"USER"`
 		Password string `ini:"PASSWORD"`
-		Topic    string `ini:"TOPIC"`
-		ClientID string `ini:"CLIENT_ID"`
+		Topic       string `ini:"TOPIC"`
+		ClientID    string `ini:"CLIENT_ID"`
+		ExpireAfter int    `ini:"EXPIRE_AFTER"`
 	} `ini:"MQTT"`
 	INFLUXDB struct {
 		Enable   bool   `ini:"ENABLE"`
@@ -149,6 +150,9 @@ func LoadConfig(path string) (*Config, error) {
 
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
+	}
+	if config.MQTT.ExpireAfter == 0 {
+		config.MQTT.ExpireAfter = 900
 	}
 	if config.INFLUXDB.URL == "" {
 		config.INFLUXDB.URL = "http://127.0.0.1:8086"
@@ -520,28 +524,7 @@ func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 		stateTopic = baseTopic + "/state"
 	}
 
-	type sensorConfig struct {
-		Name     string
-		Unit     string
-		Class    string
-		Val      string
-		Category string
-	}
-
-	sensors := map[string]sensorConfig{
-		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", ""},
-		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", ""},
-		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", ""},
-		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", ""},
-		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", ""},
-		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", ""},
-		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", ""},
-		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic"},
-		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic"},
-		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic"},
-		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic"},
-		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic"},
-	}
+	legacyKeys := []string{"rx_power", "tx_power", "temperature", "voltage", "bias_current", "cpu_usage", "mem_usage", "pon_type", "xpon_status", "uptime", "model_name", "serial_number"}
 
 	identity := stats.SerialNumber
 	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
@@ -553,7 +536,7 @@ func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 	if !status.LegacyDiscoveryCleared && identity != "" {
 		oldBaseTopic := "homeassistant/sensor/onu_monitor"
 		success := true
-		for key := range sensors {
+		for _, key := range legacyKeys {
 			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
 			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
 				if token.Error() != nil {
@@ -570,40 +553,16 @@ func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 		}
 	}
 
-	identifiers := []string{identity}
 	model := "XZ000-G7"
 	if stats.ModelName != "" {
 		model = stats.ModelName
 	}
-	deviceName := "TP-Link " + model
-
-	for key, info := range sensors {
-		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
-		configPayload := map[string]interface{}{
-			"name":                info.Name,
-			"state_topic":         stateTopic,
-			"value_template":      fmt.Sprintf("{{ value_json.%s if value_json.%s is defined else None }}", info.Val, info.Val),
-			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
-			"device": map[string]interface{}{
-				"identifiers":  identifiers,
-				"name":         deviceName,
-				"manufacturer": "TP-Link",
-				"model":        model,
-			},
-		}
-		if info.Unit != "" {
-			configPayload["unit_of_measurement"] = info.Unit
-		}
-		if info.Class != "" {
-			configPayload["device_class"] = info.Class
-		}
-		if info.Category != "" {
-			configPayload["entity_category"] = info.Category
-		}
+	payloads := BuildDiscoveryPayloads(identity, model, stateTopic, cfg.MQTT.ExpireAfter)
+	for configTopic, configPayload := range payloads {
 		
 		payloadBytes, err := json.Marshal(configPayload)
 		if err != nil {
-			log.Printf("MQTT marshal config error for %s: %v", key, err)
+			log.Printf("MQTT marshal config error for %s: %v", configTopic, err)
 			continue
 		}
 		
@@ -689,4 +648,70 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) error {
 	log.Printf("Written to InfluxDB bucket %s", cfg.INFLUXDB.Bucket)
 	
 	return nil
+}
+
+func BuildDiscoveryPayloads(identity string, model string, stateTopic string, expireAfter int) map[string]interface{} {
+	type sensorConfig struct {
+		Name       string
+		Unit       string
+		Class      string
+		Val        string
+		Category   string
+		StateClass string
+	}
+
+	sensors := map[string]sensorConfig{
+		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", "", "measurement"},
+		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", "", "measurement"},
+		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", "", "measurement"},
+		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", "", "measurement"},
+		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", "", "measurement"},
+		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", "", "measurement"},
+		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", "", "measurement"},
+		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic", ""},
+		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic", ""},
+		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic", "measurement"},
+		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic", ""},
+		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic", ""},
+	}
+
+	identifiers := []string{identity}
+	deviceName := "TP-Link " + model
+	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
+	
+	payloads := make(map[string]interface{})
+
+	for key, info := range sensors {
+		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
+		configPayload := map[string]interface{}{
+			"name":                info.Name,
+			"state_topic":         stateTopic,
+			"value_template":      fmt.Sprintf("{{ value_json.%s if value_json.%s is defined else None }}", info.Val, info.Val),
+			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
+			"device": map[string]interface{}{
+				"identifiers":  identifiers,
+				"name":         deviceName,
+				"manufacturer": "TP-Link",
+				"model":        model,
+			},
+		}
+		if expireAfter > 0 {
+			configPayload["expire_after"] = expireAfter
+		}
+		if info.Unit != "" {
+			configPayload["unit_of_measurement"] = info.Unit
+		}
+		if info.Class != "" {
+			configPayload["device_class"] = info.Class
+		}
+		if info.Category != "" {
+			configPayload["entity_category"] = info.Category
+		}
+		if info.StateClass != "" {
+			configPayload["state_class"] = info.StateClass
+		}
+		
+		payloads[configTopic] = configPayload
+	}
+	return payloads
 }

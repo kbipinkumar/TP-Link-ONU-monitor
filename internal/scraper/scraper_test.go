@@ -49,3 +49,31 @@ func TestTask2_OptionalFields(t *testing.T) {
 		t.Errorf("expected uptime to be omitted, got %s", s)
 	}
 }
+
+func TestBuildDiscoveryPayloads(t *testing.T) {
+	payloads := BuildDiscoveryPayloads("test_serial", "test_model", "test/topic/state", 900)
+	
+	if len(payloads) != 12 {
+		t.Errorf("Expected 12 payloads, got %d", len(payloads))
+	}
+	
+	for topic, payload := range payloads {
+		payloadMap := payload.(map[string]interface{})
+		if payloadMap["state_topic"] != "test/topic/state" {
+			t.Errorf("Expected state topic test/topic/state, got %v", payloadMap["state_topic"])
+		}
+		if payloadMap["expire_after"] != 900 {
+			t.Errorf("Expected expire_after 900, got %v", payloadMap["expire_after"])
+		}
+		if strings.Contains(topic, "cpu_usage") {
+			if payloadMap["state_class"] != "measurement" {
+				t.Errorf("Expected cpu_usage state_class measurement, got %v", payloadMap["state_class"])
+			}
+		}
+		if strings.Contains(topic, "serial_number") {
+			if _, ok := payloadMap["state_class"]; ok {
+				t.Errorf("Expected serial_number to not have state_class, but it did")
+			}
+		}
+	}
+}
