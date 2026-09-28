@@ -100,7 +100,7 @@ func main() {
 			if stats.SerialNumber == "" {
 				log.Println("[WARN] No ONU Serial Number obtained. Skipping MQTT publish to avoid fallback identity collision.")
 			} else {
-				if err := scraper.PublishMQTT(stats, config); err != nil {
+				if err := scraper.PublishMQTT(stats, config, status); err != nil {
 					status.LastError = fmt.Sprintf("MQTT error: %v", err)
 				} else {
 					status.LastMqttTime = now

@@ -87,12 +87,13 @@ func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
 }
 
 type SystemStatus struct {
-	LastScrapeTime   string     `json:"last_scrape_time"`
-	LastMqttTime     string     `json:"last_mqtt_time"`
-	LastInfluxTime   string     `json:"last_influx_time"`
-	LastError        string     `json:"last_error"`
-	Stats            *GPONStats `json:"stats"`
-	SerialNumber     string     `json:"serial_number"`
+	LastScrapeTime         string     `json:"last_scrape_time"`
+	LastMqttTime           string     `json:"last_mqtt_time"`
+	LastInfluxTime         string     `json:"last_influx_time"`
+	LastError              string     `json:"last_error"`
+	Stats                  *GPONStats `json:"stats"`
+	SerialNumber           string     `json:"serial_number"`
+	LegacyDiscoveryCleared bool       `json:"legacy_discovery_cleared"`
 }
 
 func ReadStatus(path string) (*SystemStatus, error) {
@@ -498,7 +499,7 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 	return stats, nil
 }
 
-func PublishMQTT(stats *GPONStats, cfg *Config) error {
+func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 	opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.MQTT.Broker, cfg.MQTT.Port))
 	opts.SetClientID(cfg.MQTT.ClientID)
 	if cfg.MQTT.User != "" {
@@ -545,22 +546,27 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 	identity := stats.SerialNumber
 	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
 	
-	// If the stateTopic was implicitly set based on the old baseTopic, we should update it
-	// Only if the user didn't override it in config.
 	if cfg.MQTT.Topic == "" {
 		stateTopic = newBaseTopic + "/state"
 	}
 
-	// Account for existing retained discovery records during this migration
-	if identity != "tp_link_xz000_g7" {
+	if !status.LegacyDiscoveryCleared && identity != "" {
 		oldBaseTopic := "homeassistant/sensor/onu_monitor"
+		success := true
 		for key := range sensors {
 			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
 			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
 				if token.Error() != nil {
 					log.Printf("Failed to clear old retained config for %s: %v", key, token.Error())
+					success = false
 				}
+			} else {
+				log.Printf("Timeout clearing old retained config for %s", key)
+				success = false
 			}
+		}
+		if success {
+			status.LegacyDiscoveryCleared = true
 		}
 	}
 
