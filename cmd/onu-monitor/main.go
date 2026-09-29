@@ -89,16 +89,22 @@ func main() {
 		statsJson, _ := json.MarshalIndent(stats, "", "  ")
 		log.Printf("Parsed Stats: %s", string(statsJson))
 		
+		scraper.ResolveIdentity(stats, status)
+		
 		now := time.Now().Format(time.RFC3339)
 		status.LastScrapeTime = now
 		status.LastError = "" // clear previous errors
 		status.Stats = stats
 		
 		if config.MQTT.Enable {
-			if err := scraper.PublishMQTT(stats, config); err != nil {
-				status.LastError = fmt.Sprintf("MQTT error: %v", err)
+			if stats.SerialNumber == "" || stats.SerialNumber == "unknown" {
+				log.Println("[WARN] No ONU Serial Number obtained. Skipping MQTT publish to avoid fallback identity collision.")
 			} else {
-				status.LastMqttTime = now
+				if err := scraper.PublishMQTT(stats, config, status); err != nil {
+					status.LastError = fmt.Sprintf("MQTT error: %v", err)
+				} else {
+					status.LastMqttTime = now
+				}
 			}
 		}
 		if config.INFLUXDB.Enable {

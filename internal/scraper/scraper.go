@@ -39,8 +39,9 @@ type Config struct {
 		Port     int    `ini:"PORT"`
 		User     string `ini:"USER"`
 		Password string `ini:"PASSWORD"`
-		Topic    string `ini:"TOPIC"`
-		ClientID string `ini:"CLIENT_ID"`
+		Topic       string `ini:"TOPIC"`
+		ClientID    string `ini:"CLIENT_ID"`
+		ExpireAfter int    `ini:"EXPIRE_AFTER"`
 	} `ini:"MQTT"`
 	INFLUXDB struct {
 		Enable   bool   `ini:"ENABLE"`
@@ -63,16 +64,15 @@ type GPONStats struct {
 	XPonStatus    string      `json:"xpon_status"`
 	RawRxPower    interface{} `json:"raw_rx_power"`
 	RawTxPower    interface{} `json:"raw_tx_power"`
-	CPUUsage      float64     `json:"cpu_usage"`
-	MemUsage      float64     `json:"mem_usage"`
-	Uptime        float64     `json:"uptime"`
-	ModelName     string      `json:"model_name"`
-	SerialNumber  string      `json:"serial_number"`
+	CPUUsage      *float64    `json:"cpu_usage,omitempty"`
+	MemUsage      *float64    `json:"mem_usage,omitempty"`
+	Uptime        *float64    `json:"uptime,omitempty"`
+	ModelName     string      `json:"model_name,omitempty"`
+	SerialNumber  string      `json:"serial_number,omitempty"`
 }
 
 var (
-	tokenRegex      = regexp.MustCompile(`var token="([^"]+)";`)
-	lastKnownSerial string
+	tokenRegex = regexp.MustCompile(`var token="([^"]+)";`)
 )
 
 func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
@@ -81,15 +81,20 @@ func doRequest(client *http.Client, req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+	}
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
 }
 
 type SystemStatus struct {
-	LastScrapeTime   string     `json:"last_scrape_time"`
-	LastMqttTime     string     `json:"last_mqtt_time"`
-	LastInfluxTime   string     `json:"last_influx_time"`
-	LastError        string     `json:"last_error"`
-	Stats            *GPONStats `json:"stats"`
+	LastScrapeTime         string     `json:"last_scrape_time"`
+	LastMqttTime           string     `json:"last_mqtt_time"`
+	LastInfluxTime         string     `json:"last_influx_time"`
+	LastError              string     `json:"last_error"`
+	Stats                  *GPONStats `json:"stats"`
+	SerialNumber           string     `json:"serial_number"`
+	LegacyDiscoveryCleared bool       `json:"legacy_discovery_cleared"`
 }
 
 func ReadStatus(path string) (*SystemStatus, error) {
@@ -110,6 +115,16 @@ func WriteStatus(path string, status *SystemStatus) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+func ResolveIdentity(stats *GPONStats, status *SystemStatus) {
+	if stats.SerialNumber == "" || stats.SerialNumber == "unknown" {
+		if status.SerialNumber != "" && status.SerialNumber != "unknown" {
+			stats.SerialNumber = status.SerialNumber
+		}
+	} else {
+		status.SerialNumber = stats.SerialNumber
+	}
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -134,11 +149,12 @@ func LoadConfig(path string) (*Config, error) {
 	if config.MQTT.Port == 0 {
 		config.MQTT.Port = 1883
 	}
-	if config.MQTT.Topic == "tele/onu/gpon_stats" || config.MQTT.Topic == "homeassistant/sensor/onu_monitor/state" {
-		config.MQTT.Topic = ""
-	}
+
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
+	}
+	if !cfg.Section("MQTT").HasKey("EXPIRE_AFTER") {
+		config.MQTT.ExpireAfter = 900
 	}
 	if config.INFLUXDB.URL == "" {
 		config.INFLUXDB.URL = "http://127.0.0.1:8086"
@@ -439,16 +455,15 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 
-		resp, err := client.Do(req)
+		body, err := doRequest(client, req)
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 
 		var res struct {
 			Data map[string]interface{} `json:"data"`
 		}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
+		if err := json.Unmarshal(body, &res); err != nil {
 			return nil, err
 		}
 		return res.Data, nil
@@ -459,38 +474,38 @@ func GetGPONStats(cfg *Config) (*GPONStats, error) {
 			stats.ModelName = parseString(val)
 		}
 		if val, ok := devInfo["serialNumber"]; ok && val != nil {
-			stats.SerialNumber = parseString(val)
-			if stats.SerialNumber != "" {
-				lastKnownSerial = stats.SerialNumber
-			}
+			stats.SerialNumber = SanitizeSerial(parseString(val))
 		}
 		if uptime, err := parseAnyFloat(devInfo, "upTime"); err == nil {
-			stats.Uptime = uptime
+			stats.Uptime = &uptime
 		}
-	}
-
-	if stats.SerialNumber == "" && lastKnownSerial != "" {
-		stats.SerialNumber = lastKnownSerial
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_DEV_INFO: %v", err)
 	}
 
 	if procStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_PROC_STATUS","data":{"CPUUsage":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
 		if cpu, err := parseAnyFloat(procStatus, "CPUUsage"); err == nil {
-			stats.CPUUsage = cpu
+			stats.CPUUsage = &cpu
 		}
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_PROC_STATUS: %v", err)
 	}
 
 	if memStatus, err := fetchOID(`{"operation":"go","oid":"DEV2_MEM_STATUS","data":{"total":"","free":"","stack":"0,0,0,0,0,0","pstack":"0,0,0,0,0,0"}}`); err == nil {
 		total, errTotal := parseAnyFloat(memStatus, "total")
 		free, errFree := parseAnyFloat(memStatus, "free")
 		if errTotal == nil && errFree == nil && total > 0 {
-			stats.MemUsage = math.Round(((total-free)/total)*10000) / 100
+			memUsage := math.Round(((total-free)/total)*10000) / 100
+			stats.MemUsage = &memUsage
 		}
+	} else {
+		log.Printf("[INFO] Failed to fetch DEV2_MEM_STATUS: %v", err)
 	}
 	
 	return stats, nil
 }
 
-func PublishMQTT(stats *GPONStats, cfg *Config) error {
+func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 	opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.MQTT.Broker, cfg.MQTT.Port))
 	opts.SetClientID(cfg.MQTT.ClientID)
 	if cfg.MQTT.User != "" {
@@ -511,88 +526,52 @@ func PublishMQTT(stats *GPONStats, cfg *Config) error {
 		stateTopic = baseTopic + "/state"
 	}
 
-	type sensorConfig struct {
-		Name     string
-		Unit     string
-		Class    string
-		Val      string
-		Category string
-	}
+	legacyKeys := []string{"rx_power", "tx_power", "temperature", "voltage", "bias_current", "cpu_usage", "mem_usage", "pon_type", "xpon_status", "uptime", "model_name", "serial_number"}
 
-	sensors := map[string]sensorConfig{
-		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", ""},
-		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", ""},
-		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", ""},
-		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", ""},
-		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", ""},
-		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", ""},
-		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", ""},
-		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic"},
-		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic"},
-		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic"},
-		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic"},
-		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic"},
-	}
-
+	ResolveIdentity(stats, status)
 	identity := stats.SerialNumber
-	if identity == "" {
-		identity = "tp_link_xz000_g7"
+	if identity == "" || identity == "unknown" {
+		return fmt.Errorf("MQTT publish aborted: resolved identity is empty or unknown")
 	}
+
 	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
 	
-	// If the stateTopic was implicitly set based on the old baseTopic, we should update it
-	// Only if the user didn't override it in config.
 	if cfg.MQTT.Topic == "" {
 		stateTopic = newBaseTopic + "/state"
 	}
 
-	// Account for existing retained discovery records during this migration
-	if identity != "tp_link_xz000_g7" {
-		oldBaseTopic := "homeassistant/sensor/onu_monitor"
-		for key := range sensors {
-			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
-			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
-				if token.Error() != nil {
-					log.Printf("Failed to clear old retained config for %s: %v", key, token.Error())
+	if !status.LegacyDiscoveryCleared {
+		oldBaseTopics := []string{"homeassistant/sensor/onu_monitor", "homeassistant/sensor/onu_tp_link_xz000_g7"}
+		success := true
+		for _, oldBaseTopic := range oldBaseTopics {
+			for _, key := range legacyKeys {
+				oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
+				if token := client.Publish(oldConfigTopic, 1, true, []byte("")); token.WaitTimeout(5 * time.Second) {
+					if token.Error() != nil {
+						log.Printf("Failed to clear old retained config %s: %v", oldConfigTopic, token.Error())
+						success = false
+					}
+				} else {
+					log.Printf("Timeout clearing old retained config %s", oldConfigTopic)
+					success = false
 				}
 			}
 		}
+		if success {
+			status.LegacyDiscoveryCleared = true
+		}
 	}
 
-	identifiers := []string{identity}
 	model := "XZ000-G7"
 	if stats.ModelName != "" {
 		model = stats.ModelName
 	}
-	deviceName := "TP-Link " + model
-
-	for key, info := range sensors {
-		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
-		configPayload := map[string]interface{}{
-			"name":                info.Name,
-			"state_topic":         stateTopic,
-			"value_template":      fmt.Sprintf("{{ value_json.%s }}", info.Val),
-			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
-			"device": map[string]interface{}{
-				"identifiers":  identifiers,
-				"name":         deviceName,
-				"manufacturer": "TP-Link",
-				"model":        model,
-			},
-		}
-		if info.Unit != "" {
-			configPayload["unit_of_measurement"] = info.Unit
-		}
-		if info.Class != "" {
-			configPayload["device_class"] = info.Class
-		}
-		if info.Category != "" {
-			configPayload["entity_category"] = info.Category
-		}
+	payloads := BuildDiscoveryPayloads(identity, model, stateTopic, cfg.MQTT.ExpireAfter)
+	for configTopic, configPayload := range payloads {
 		
 		payloadBytes, err := json.Marshal(configPayload)
 		if err != nil {
-			log.Printf("MQTT marshal config error for %s: %v", key, err)
+			log.Printf("MQTT marshal config error for %s: %v", configTopic, err)
 			continue
 		}
 		
@@ -657,6 +636,16 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) error {
 		AddField("raw_tx_power", parseRaw(stats.RawTxPower)).
 		SetTime(time.Now())
 
+	if stats.CPUUsage != nil {
+		p.AddField("cpu_usage", *stats.CPUUsage)
+	}
+	if stats.MemUsage != nil {
+		p.AddField("mem_usage", *stats.MemUsage)
+	}
+	if stats.Uptime != nil {
+		p.AddField("uptime", *stats.Uptime)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
@@ -668,4 +657,82 @@ func PublishInfluxDB(stats *GPONStats, cfg *Config) error {
 	log.Printf("Written to InfluxDB bucket %s", cfg.INFLUXDB.Bucket)
 	
 	return nil
+}
+
+func BuildDiscoveryPayloads(identity string, model string, stateTopic string, expireAfter int) map[string]interface{} {
+	type sensorConfig struct {
+		Name       string
+		Unit       string
+		Class      string
+		Val        string
+		Category   string
+		StateClass string
+	}
+
+	sensors := map[string]sensorConfig{
+		"rx_power":      {"ONU RX Power", "dBm", "signal_strength", "rx_power_dbm", "", "measurement"},
+		"tx_power":      {"ONU TX Power", "dBm", "signal_strength", "tx_power_dbm", "", "measurement"},
+		"temperature":   {"ONU Temperature", "°C", "temperature", "temperature_c", "", "measurement"},
+		"voltage":       {"ONU Supply Voltage", "mV", "voltage", "voltage_mv", "", "measurement"},
+		"bias_current":  {"ONU Bias Current", "mA", "current", "bias_current_ma", "", "measurement"},
+		"cpu_usage":     {"ONU CPU Usage", "%", "", "cpu_usage", "", "measurement"},
+		"mem_usage":     {"ONU Memory Usage", "%", "", "mem_usage", "", "measurement"},
+		"pon_type":      {"ONU PON Type", "", "", "pon_type", "diagnostic", ""},
+		"xpon_status":   {"ONU xPON Status", "", "", "xpon_status", "diagnostic", ""},
+		"uptime":        {"ONU Uptime", "s", "duration", "uptime", "diagnostic", "measurement"},
+		"model_name":    {"ONU Model Name", "", "", "model_name", "diagnostic", ""},
+		"serial_number": {"ONU Serial Number", "", "", "serial_number", "diagnostic", ""},
+	}
+
+	identifiers := []string{identity}
+	deviceName := "TP-Link " + model
+	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
+	
+	payloads := make(map[string]interface{})
+
+	for key, info := range sensors {
+		configTopic := fmt.Sprintf("%s/%s/config", newBaseTopic, key)
+		configPayload := map[string]interface{}{
+			"name":                info.Name,
+			"state_topic":         stateTopic,
+			"value_template":      fmt.Sprintf("{{ value_json.%s if value_json.%s is defined else None }}", info.Val, info.Val),
+			"unique_id":           fmt.Sprintf("tp_link_onu_%s_%s", identity, key),
+			"device": map[string]interface{}{
+				"identifiers":  identifiers,
+				"name":         deviceName,
+				"manufacturer": "TP-Link",
+				"model":        model,
+			},
+		}
+		// EXPIRE_AFTER must exceed the configured systemd scrape interval.
+		// If a scrape fails, state updates are not published. If the timer interval
+		// is longer than EXPIRE_AFTER, entities will frequently become unavailable.
+		if expireAfter > 0 {
+			configPayload["expire_after"] = expireAfter
+		}
+		if info.Unit != "" {
+			configPayload["unit_of_measurement"] = info.Unit
+		}
+		if info.Class != "" {
+			configPayload["device_class"] = info.Class
+		}
+		if info.Category != "" {
+			configPayload["entity_category"] = info.Category
+		}
+		if info.StateClass != "" {
+			configPayload["state_class"] = info.StateClass
+		}
+		
+		payloads[configTopic] = configPayload
+	}
+	return payloads
+}
+
+func SanitizeSerial(s string) string {
+	reg := regexp.MustCompile(`[^A-Za-z0-9_-]`)
+	s = reg.ReplaceAllString(s, "")
+	if s == "" {
+		return "unknown"
+	}
+	return s
 }

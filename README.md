@@ -132,7 +132,7 @@ sudo journalctl -u onu_monitor.service -f
 ```
 
 ## Home Assistant Integration
-If MQTT is enabled, the script will automatically publish Home Assistant MQTT Discovery payloads to `homeassistant/sensor/onu_monitor/...`. 
+If MQTT is enabled, the script will automatically publish Home Assistant MQTT Discovery payloads to `homeassistant/sensor/onu_<serial>/...`. 
 
 Ensure that the **MQTT integration** is installed in Home Assistant. The sensors will automatically appear under the device **TP-Link XZ000-G7 ONU**, tracking:
 - ONU RX Power (dBm)
@@ -156,3 +156,11 @@ GPON Optical Power trends, Current RX/TX Gauges, and Temperature timeseries will
 
 
 > **Disclaimer**: This is an LLM-generated project intended strictly for private/hobby use. It is provided "as is" without any warranties, guarantees, or official support. Please review the code and use it at your own risk before deploying it in any critical or production environments.
+
+
+## MQTT Topics
+
+By default, the MQTT state topic is automatically derived from the ONU's serial number (`homeassistant/sensor/onu_<serial>/state`). To use the automatic topic, leave `TOPIC` empty in your `onu_config.ini`.
+
+**Upgrade Note for v1.2.x:**
+If you have `TOPIC = tele/onu/gpon_stats` in your config from an older installation, it will be respected and used as the state topic. If you wish to switch to the automatic serial-based topic (recommended for Home Assistant integration), remove the `TOPIC` line or set it to blank in your configuration file.
