@@ -132,7 +132,7 @@ sudo journalctl -u onu_monitor.service -f
 ```
 
 ## Home Assistant Integration
-If MQTT is enabled, the script will automatically publish Home Assistant MQTT Discovery payloads to `homeassistant/sensor/onu_monitor/...`. 
+If MQTT is enabled, the script will automatically publish Home Assistant MQTT Discovery payloads to `homeassistant/sensor/onu_<serial>/...`. 
 
 Ensure that the **MQTT integration** is installed in Home Assistant. The sensors will automatically appear under the device **TP-Link XZ000-G7 ONU**, tracking:
 - ONU RX Power (dBm)

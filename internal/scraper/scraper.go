@@ -697,6 +697,9 @@ func BuildDiscoveryPayloads(identity string, model string, stateTopic string, ex
 				"model":        model,
 			},
 		}
+		// EXPIRE_AFTER must exceed the configured systemd scrape interval.
+		// If a scrape fails, state updates are not published. If the timer interval
+		// is longer than EXPIRE_AFTER, entities will frequently become unavailable.
 		if expireAfter > 0 {
 			configPayload["expire_after"] = expireAfter
 		}

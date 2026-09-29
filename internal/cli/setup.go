@@ -80,7 +80,16 @@ func RunInteractiveSetup(configPath string) {
 				}
 				return nil
 			}),
-			huh.NewInput().Title("MQTT Base Topic (Leave blank for auto)").Value(&mqttTopic).Placeholder("homeassistant/sensor/onu_<serial>/state"),
+			huh.NewInput().
+				Title("MQTT Base Topic").
+				Description(func() string {
+					if config.MQTT.Topic == "" {
+						return "Current: auto. Leave blank to keep."
+					}
+					return fmt.Sprintf("Current: %s. Enter 'auto' to clear and use auto-discovery.", config.MQTT.Topic)
+				}()).
+				Value(&mqttTopic).
+				Placeholder("auto"),
 			huh.NewInput().Title("MQTT Client ID").Value(&mqttClientID).Placeholder(config.MQTT.ClientID),
 			huh.NewInput().Title("MQTT Username (Optional)").Value(&mqttUser).Placeholder(config.MQTT.User),
 			huh.NewInput().Title("MQTT Password (Optional)").Value(&mqttPass).EchoMode(huh.EchoModePassword),
@@ -146,7 +155,11 @@ func RunInteractiveSetup(configPath string) {
 	if enableMQTT {
 		cfg.Section("MQTT").Key("ENABLE").SetValue("True")
 		if mqttBroker != "" { cfg.Section("MQTT").Key("BROKER").SetValue(mqttBroker) }
-		if mqttTopic != "" { cfg.Section("MQTT").Key("TOPIC").SetValue(mqttTopic) }
+		if mqttTopic == "auto" {
+			cfg.Section("MQTT").Key("TOPIC").SetValue("")
+		} else if mqttTopic != "" {
+			cfg.Section("MQTT").Key("TOPIC").SetValue(mqttTopic)
+		}
 		if mqttClientID != "" { cfg.Section("MQTT").Key("CLIENT_ID").SetValue(mqttClientID) }
 		if mqttUser != "" { cfg.Section("MQTT").Key("USER").SetValue(mqttUser) }
 		if mqttPass != "" { cfg.Section("MQTT").Key("PASSWORD").SetValue(mqttPass) }
