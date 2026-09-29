@@ -54,8 +54,8 @@ func TestLive_Task1_SerialNumber(t *testing.T) {
 		t.Fatalf("Scrape 1 failed: %v", err)
 	}
 	
-	if stats1.SerialNumber == "" {
-		t.Fatalf("Scrape 1 returned empty serial number")
+	if stats1.SerialNumber == "" || stats1.SerialNumber == "unknown" {
+		t.Fatalf("Scrape 1 returned empty or unknown serial number")
 	}
 	t.Logf("Scrape 1 serial: %s", maskSerial(stats1.SerialNumber))
 
@@ -66,13 +66,13 @@ func TestLive_Task1_SerialNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scrape 2 failed: %v", err)
 	}
-	if stats2.SerialNumber == "" {
-		t.Fatalf("Scrape 2 returned empty serial number")
+	if stats2.SerialNumber == "" || stats2.SerialNumber == "unknown" {
+		t.Fatalf("Scrape 2 returned empty or unknown serial number")
 	}
 	t.Logf("Scrape 2 serial: %s", maskSerial(stats2.SerialNumber))
 	
 	if stats1.SerialNumber != stats2.SerialNumber {
-		t.Errorf("Serial number changed between scrapes! 1: %s, 2: %s", stats1.SerialNumber, stats2.SerialNumber)
+		t.Errorf("Serial number changed between scrapes! 1: %s, 2: %s", maskSerial(stats1.SerialNumber), maskSerial(stats2.SerialNumber))
 	}
 }
 

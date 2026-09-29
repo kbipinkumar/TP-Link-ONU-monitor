@@ -153,7 +153,7 @@ func LoadConfig(path string) (*Config, error) {
 	if config.MQTT.ClientID == "" {
 		config.MQTT.ClientID = "onu_monitor"
 	}
-	if config.MQTT.ExpireAfter == 0 {
+	if !cfg.Section("MQTT").HasKey("EXPIRE_AFTER") {
 		config.MQTT.ExpireAfter = 900
 	}
 	if config.INFLUXDB.URL == "" {
@@ -528,26 +528,33 @@ func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 
 	legacyKeys := []string{"rx_power", "tx_power", "temperature", "voltage", "bias_current", "cpu_usage", "mem_usage", "pon_type", "xpon_status", "uptime", "model_name", "serial_number"}
 
+	ResolveIdentity(stats, status)
 	identity := stats.SerialNumber
+	if identity == "" || identity == "unknown" {
+		return fmt.Errorf("MQTT publish aborted: resolved identity is empty or unknown")
+	}
+
 	newBaseTopic := fmt.Sprintf("homeassistant/sensor/onu_%s", identity)
 	
 	if cfg.MQTT.Topic == "" {
 		stateTopic = newBaseTopic + "/state"
 	}
 
-	if !status.LegacyDiscoveryCleared && identity != "" {
-		oldBaseTopic := "homeassistant/sensor/onu_monitor"
+	if !status.LegacyDiscoveryCleared {
+		oldBaseTopics := []string{"homeassistant/sensor/onu_monitor", "homeassistant/sensor/onu_tp_link_xz000_g7"}
 		success := true
-		for _, key := range legacyKeys {
-			oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
-			if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
-				if token.Error() != nil {
-					log.Printf("Failed to clear old retained config for %s: %v", key, token.Error())
+		for _, oldBaseTopic := range oldBaseTopics {
+			for _, key := range legacyKeys {
+				oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
+				if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
+					if token.Error() != nil {
+						log.Printf("Failed to clear old retained config %s: %v", oldConfigTopic, token.Error())
+						success = false
+					}
+				} else {
+					log.Printf("Timeout clearing old retained config %s", oldConfigTopic)
 					success = false
 				}
-			} else {
-				log.Printf("Timeout clearing old retained config for %s", key)
-				success = false
 			}
 		}
 		if success {
