@@ -546,7 +546,7 @@ func PublishMQTT(stats *GPONStats, cfg *Config, status *SystemStatus) error {
 		for _, oldBaseTopic := range oldBaseTopics {
 			for _, key := range legacyKeys {
 				oldConfigTopic := fmt.Sprintf("%s/%s/config", oldBaseTopic, key)
-				if token := client.Publish(oldConfigTopic, 0, true, []byte("")); token.WaitTimeout(5 * time.Second) {
+				if token := client.Publish(oldConfigTopic, 1, true, []byte("")); token.WaitTimeout(5 * time.Second) {
 					if token.Error() != nil {
 						log.Printf("Failed to clear old retained config %s: %v", oldConfigTopic, token.Error())
 						success = false
